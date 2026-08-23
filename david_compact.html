@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>David</title>
+<style>
+  :root {
+    --cyan: #35B8F0; --cyan-bright: #7FE4FF; --ice: #CFEBFA; --dim: #4E7893;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden; background: transparent;
+    font-family: var(--mono); color: var(--ice);
+  }
+
+  .wrap {
+    position: fixed; right: 14px; bottom: 14px;
+    display: flex; flex-direction: column; align-items: flex-end; gap: 10px;
+  }
+
+  /* the collapsed dot — what sits there almost all the time */
+  .dot {
+    width: 46px; height: 46px; border-radius: 50%;
+    background: radial-gradient(circle at 42% 36%, #1a3a4a 0%, #04141c 75%);
+    border: 1px solid rgba(53,184,240,.35);
+    display: grid; place-items: center; cursor: default;
+    box-shadow: 0 0 0 rgba(53,184,240,0);
+    transition: box-shadow .3s ease, border-color .3s ease, transform .3s ease;
+  }
+  .dot::before {
+    content: ""; width: 10px; height: 10px; border-radius: 50%;
+    background: var(--dim); transition: background .3s ease, box-shadow .3s ease;
+  }
+  .wrap.awake .dot {
+    border-color: rgba(53,184,240,.7);
+    box-shadow: 0 0 18px rgba(53,184,240,.35);
+  }
+  .wrap.awake .dot::before {
+    background: var(--cyan-bright);
+    box-shadow: 0 0 10px var(--cyan-bright);
+  }
+
+  /* the panel — appears only while something is actually happening */
+  .panel {
+    width: 280px;
+    background: rgba(4,14,20,.88);
+    border: 1px solid rgba(53,184,240,.32);
+    backdrop-filter: blur(6px);
+    padding: 14px 16px;
+    opacity: 0; transform: translateY(8px) scale(.96);
+    pointer-events: none;
+    transition: opacity .28s ease, transform .28s ease;
+    position: relative;
+  }
+  .panel::before, .panel::after {
+    content: ""; position: absolute; width: 10px; height: 10px; pointer-events: none;
+    border-color: var(--cyan);
+  }
+  .panel::before { top: -1px; left: -1px; border-top: 2px solid; border-left: 2px solid; }
+  .panel::after { bottom: -1px; right: -1px; border-bottom: 2px solid; border-right: 2px solid; }
+
+  .wrap.show .panel {
+    opacity: 1; transform: translateY(0) scale(1); pointer-events: auto;
+  }
+
+  .state {
+    font-size: 9px; letter-spacing: .22em; text-transform: uppercase; color: var(--dim);
+    display: flex; align-items: center; gap: 7px; margin-bottom: 10px;
+  }
+  .state .led {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--dim);
+  }
+  .state.listening .led { background: #fff; box-shadow: 0 0 8px #fff; }
+  .state.thinking .led { background: var(--amber, #E8A33D); box-shadow: 0 0 8px #E8A33D; animation: blink 1s ease-in-out infinite; }
+  .state.speaking .led { background: var(--cyan-bright); box-shadow: 0 0 8px var(--cyan-bright); }
+
+  .wave { display: flex; align-items: center; gap: 2px; height: 30px; margin-bottom: 10px; }
+  .wave i {
+    flex: 1; background: var(--cyan); height: 3px; border-radius: 1px;
+    box-shadow: 0 0 5px rgba(53,184,240,.7); transition: height .08s linear;
+  }
+
+  .said {
+    font-size: 12px; color: var(--ice); line-height: 1.45; font-family: "Segoe UI", sans-serif;
+    max-height: 30vh; overflow-y: auto;
+  }
+  .said.you { color: var(--dim); font-style: italic; }
+
+  @keyframes blink { 0%,100% { opacity: 1 } 50% { opacity: .3 } }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+  <div class="wrap" id="wrap">
+    <div class="panel" id="panel">
+      <div class="state" id="state"><span class="led"></span><span id="stateText">Standing by</span></div>
+      <div class="wave" id="wave"></div>
+      <div class="said" id="said"></div>
+    </div>
+    <div class="dot" id="dot"></div>
+  </div>
+
+<script>
+const BARS = 26;
+const wave = document.getElementById("wave");
+for (let i = 0; i < BARS; i++) wave.appendChild(document.createElement("i"));
+const bars = [...wave.children];
+
+const wrap = document.getElementById("wrap");
+const panel = document.getElementById("panel");
+const stateEl = document.getElementById("state");
+const stateText = document.getElementById("stateText");
+const said = document.getElementById("said");
+
+const LABELS = { idle: "Standing by", listening: "Listening", thinking: "Working", speaking: "Speaking" };
+
+let level = 0, target = 0;
+let hideTimer = null;
+
+function paint() {
+  level += (target - level) * 0.3;
+  bars.forEach((b, i) => {
+    const mid = 1 - Math.abs(i - (BARS - 1) / 2) / ((BARS - 1) / 2);
+    b.style.height = (2 + level * 26 * (0.3 + mid * 0.7) * (0.5 + Math.random() * 0.5)).toFixed(1) + "px";
+  });
+  requestAnimationFrame(paint);
+}
+paint();
+
+function apply(s) {
+  wrap.classList.toggle("awake", s.status !== "idle");
+
+  if (s.status !== "idle") {
+    wrap.classList.add("show");
+    clearTimeout(hideTimer);
+  } else {
+    // linger a couple of seconds after going idle, like Siri does, then fold away
+    hideTimer = setTimeout(() => wrap.classList.remove("show"), 2200);
+  }
+
+  stateEl.className = "state " + s.status;
+  stateText.textContent = LABELS[s.status] || "Standing by";
+  target = s.status === "listening" ? (s.micLevel || 0) : s.status === "speaking" ? (s.outLevel || 0.5) : 0.04;
+
+  if (s.lastLine) {
+    said.textContent = "\u201c" + s.lastLine + "\u201d";
+  }
+}
+
+function connect() {
+  const ws = new WebSocket("ws://127.0.0.1:8766");
+  ws.onmessage = (e) => { try { apply(JSON.parse(e.data)); } catch (_) {} };
+  ws.onclose = () => setTimeout(connect, 1500);
+}
+connect();
+</script>
+</body>
+</html>

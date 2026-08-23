@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>David — Settings</title>
+<style>
+  :root {
+    --bg: #03070C; --panel: rgba(8,20,34,.6); --edge: rgba(56,170,240,.28);
+    --cyan: #35B8F0; --ice: #CFEBFA; --dim: #4E7893; --green: #35E08A; --amber: #E8A33D;
+    --sans: "Segoe UI", system-ui, sans-serif; --mono: ui-monospace, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--ice);
+         font-family: var(--sans); padding: 40px 24px; }
+  h1 { font-size: 22px; letter-spacing: .04em; margin: 0 0 6px; }
+  .sub { color: var(--dim); font-family: var(--mono); font-size: 12px; letter-spacing: .1em; margin-bottom: 32px; }
+  .grid { display: grid; gap: 16px; max-width: 640px; }
+  .card { background: var(--panel); border: 1px solid var(--edge); padding: 20px; position: relative; }
+  .card h2 { font-size: 15px; margin: 0 0 4px; display: flex; align-items: center; gap: 10px; }
+  .card p { color: var(--dim); font-size: 13px; margin: 0 0 16px; line-height: 1.5; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
+  .dot.on { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .row { display: flex; gap: 10px; align-items: center; }
+  button { background: transparent; border: 1px solid var(--cyan); color: var(--cyan);
+           padding: 9px 18px; font-family: var(--mono); font-size: 11px; letter-spacing: .12em;
+           text-transform: uppercase; cursor: pointer; }
+  button:hover { background: rgba(53,184,240,.12); }
+  button.danger { border-color: rgba(220,90,70,.6); color: #ff9a85; }
+  button:disabled { opacity: .35; cursor: default; }
+  .status { font-family: var(--mono); font-size: 11px; color: var(--dim); margin-left: auto; }
+  .soon { opacity: .45; }
+  .soon .row::after { content: "coming soon"; font-family: var(--mono); font-size: 10px;
+                       letter-spacing: .12em; color: var(--dim); margin-left: auto; text-transform: uppercase; }
+  input[type="text"], input[type="password"] {
+    background: rgba(255,255,255,.04); border: 1px solid var(--edge); color: var(--ice);
+    padding: 9px 10px; font-family: var(--mono); font-size: 12px; width: 100%; outline: none;
+  }
+  input[type="text"]:focus, input[type="password"]:focus { border-color: var(--cyan); }
+  input[type="text"]::placeholder, input[type="password"]::placeholder { color: var(--dim); }
+  .field { margin-bottom: 10px; }
+  .hint { font-family: var(--mono); font-size: 10px; color: var(--dim); margin-top: -6px; margin-bottom: 14px; }
+  .hint a { color: var(--cyan); }
+</style>
+</head>
+<body>
+  <h1>David — Settings</h1>
+  <div class="sub">CONNECTED TOOLS</div>
+
+  <div class="grid">
+    <div class="card">
+      <h2><span class="dot on"></span> Display</h2>
+      <p>Full screen HUD stays on its own monitor. Compact is a small corner popup that appears when David is active and folds away when he goes quiet — like Siri.</p>
+      <div class="row" style="gap:8px;">
+        <button id="modeFull">Full screen</button>
+        <button id="modeCompact">Compact popup</button>
+        <span class="status" id="modeStatus"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="dot" id="gmailDot"></span> Gmail</h2>
+      <p>Read and send mail directly. No screen reading, no vision quota used.</p>
+      <div class="row">
+        <button id="gmailBtn">Connect</button>
+        <span class="status" id="gmailStatus">checking…</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="dot" id="notionDot"></span> Notion</h2>
+      <p>Give David a page to journal to. Ask him to journal something and it lands there, dated.</p>
+      <div id="notionForm">
+        <div class="field"><input id="notionSecret" type="password" placeholder="Integration secret" /></div>
+        <div class="field"><input id="notionPage" type="text" placeholder="Journal page link or id" /></div>
+        <div class="hint">
+          Create an integration at <a href="https://www.notion.so/my-integrations" target="_blank" rel="noopener">notion.so/my-integrations</a>,
+          then share your journal page with it from the page's ••• menu → Connections.
+        </div>
+      </div>
+      <div class="row">
+        <button id="notionBtn">Connect</button>
+        <span class="status" id="notionStatus">checking…</span>
+      </div>
+    </div>
+
+    <div class="card soon">
+      <h2><span class="dot"></span> WhatsApp</h2>
+      <p>No official way to connect a personal account. David reads it off the screen instead.</p>
+      <div class="row"><button disabled>Connect</button></div>
+    </div>
+
+    <div class="card soon">
+      <h2><span class="dot"></span> Voice enrollment</h2>
+      <p>Teach David to recognise your voice specifically. Needs more headroom than this machine has to spare right now.</p>
+      <div class="row"><button disabled>Set up</button></div>
+    </div>
+  </div>
+
+  <script>
+    async function api(path, opts) {
+      const res = await fetch(path, opts);
+      return res.json();
+    }
+
+    async function refreshMode() {
+      const s = await api("/api/display/mode");
+      document.getElementById("modeFull").style.borderColor = s.mode === "full" ? "var(--green)" : "";
+      document.getElementById("modeFull").style.color = s.mode === "full" ? "var(--green)" : "";
+      document.getElementById("modeCompact").style.borderColor = s.mode === "compact" ? "var(--green)" : "";
+      document.getElementById("modeCompact").style.color = s.mode === "compact" ? "var(--green)" : "";
+    }
+
+    async function setMode(mode) {
+      const res = await api("/api/display/mode", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode })
+      });
+      document.getElementById("modeStatus").textContent = res.ok ? "saved — restart David to apply" : "failed";
+      await refreshMode();
+    }
+
+    document.getElementById("modeFull").addEventListener("click", () => setMode("full"));
+    document.getElementById("modeCompact").addEventListener("click", () => setMode("compact"));
+    refreshMode();
+
+    async function refresh() {
+      const s = await api("/api/gmail/status");
+      document.getElementById("gmailDot").classList.toggle("on", s.connected);
+      document.getElementById("gmailStatus").textContent = s.connected ? s.address : (s.ready ? "not connected" : "needs credentials.json");
+      const btn = document.getElementById("gmailBtn");
+      btn.textContent = s.connected ? "Disconnect" : "Connect";
+      btn.className = s.connected ? "danger" : "";
+      btn.disabled = !s.ready && !s.connected;
+    }
+
+    document.getElementById("gmailBtn").addEventListener("click", async () => {
+      const btn = document.getElementById("gmailBtn");
+      btn.disabled = true;
+      const s = await api("/api/gmail/status");
+      if (s.connected) {
+        await api("/api/gmail/disconnect", { method: "POST" });
+      } else {
+        document.getElementById("gmailStatus").textContent = "check your browser…";
+        await api("/api/gmail/connect", { method: "POST" });
+      }
+      await refresh();
+    });
+
+    refresh();
+    setInterval(refresh, 4000);
+
+    async function refreshNotion() {
+      const s = await api("/api/notion/status");
+      document.getElementById("notionDot").classList.toggle("on", s.connected);
+      document.getElementById("notionStatus").textContent = s.connected ? s.page_title : "not connected";
+      document.getElementById("notionForm").style.display = s.connected ? "none" : "block";
+      const btn = document.getElementById("notionBtn");
+      btn.textContent = s.connected ? "Disconnect" : "Connect";
+      btn.className = s.connected ? "danger" : "";
+    }
+
+    document.getElementById("notionBtn").addEventListener("click", async () => {
+      const btn = document.getElementById("notionBtn");
+      const s = await api("/api/notion/status");
+      btn.disabled = true;
+      if (s.connected) {
+        await api("/api/notion/disconnect", { method: "POST" });
+      } else {
+        const secret = document.getElementById("notionSecret").value.trim();
+        const page = document.getElementById("notionPage").value.trim();
+        if (!secret || !page) {
+          document.getElementById("notionStatus").textContent = "need both fields";
+          btn.disabled = false;
+          return;
+        }
+        document.getElementById("notionStatus").textContent = "connecting…";
+        const res = await api("/api/notion/connect", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ secret, page })
+        });
+        if (!res.ok) {
+          document.getElementById("notionStatus").textContent = res.error || "failed";
+          btn.disabled = false;
+          return;
+        }
+        document.getElementById("notionSecret").value = "";
+      }
+      btn.disabled = false;
+      await refreshNotion();
+    });
+
+    refreshNotion();
+    setInterval(refreshNotion, 4000);
+  </script>
+</body>
+</html>

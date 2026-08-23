@@ -1,0 +1,7 @@
+# Speech-recognition model binaries (large, third-party, not source code)
+model/
+model-small/
+
+# Python
+__pycache__/
+*.pyc

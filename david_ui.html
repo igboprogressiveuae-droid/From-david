@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>DAVID OS</title>
+<style>
+  :root {
+    --bg: #03070C;
+    --panel: rgba(8, 20, 34, .55);
+    --edge: rgba(56, 170, 240, .28);
+    --cyan: #35B8F0;
+    --cyan-bright: #7FE4FF;
+    --ice: #CFEBFA;
+    --dim: #4E7893;
+    --green: #35E08A;
+    --amber: #E8A33D;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    --sans: "Segoe UI", system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+
+  body {
+    background:
+      radial-gradient(circle at 50% 62%, rgba(20, 90, 150, .22), transparent 60%),
+      var(--bg);
+    color: var(--ice);
+    font-family: var(--sans);
+    display: grid;
+    grid-template-rows: 58px 1fr;
+    gap: 10px;
+    padding: 10px;
+  }
+
+  /* faint scanlines over everything */
+  body::after {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 99;
+    background: repeating-linear-gradient(180deg,
+      rgba(53,184,240,.035) 0 1px, transparent 1px 3px);
+  }
+
+  .panel {
+    position: relative;
+    background: var(--panel);
+    border: 1px solid var(--edge);
+    padding: 12px 14px;
+    backdrop-filter: blur(3px);
+    overflow: hidden;
+  }
+  .panel::before, .panel::after {
+    content: ""; position: absolute; width: 12px; height: 12px; pointer-events: none;
+    border-color: var(--cyan);
+  }
+  .panel::before { top: -1px; left: -1px; border-top: 2px solid; border-left: 2px solid; }
+  .panel::after { bottom: -1px; right: -1px; border-bottom: 2px solid; border-right: 2px solid; }
+
+  h2 {
+    margin: 0 0 10px;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .22em;
+    text-transform: uppercase;
+    color: var(--ice);
+    padding-bottom: 7px;
+    border-bottom: 1px solid rgba(56,170,240,.18);
+  }
+
+  /* ---------- top bar ---------- */
+  header {
+    display: grid;
+    grid-template-columns: 260px 1fr auto 1fr 300px;
+    align-items: center;
+    gap: 14px;
+    border: 1px solid var(--edge);
+    background: var(--panel);
+    padding: 0 16px;
+    position: relative;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand .mark {
+    width: 34px; height: 34px; border: 2px solid var(--cyan);
+    display: grid; place-items: center; font-family: var(--mono);
+    font-size: 15px; color: var(--cyan-bright);
+    box-shadow: 0 0 14px rgba(53,184,240,.35), inset 0 0 12px rgba(53,184,240,.2);
+  }
+  .brand b { font-size: 19px; letter-spacing: .06em; display: block; line-height: 1.05; }
+  .brand span { font-family: var(--mono); font-size: 9px; color: var(--dim); letter-spacing: .18em; }
+
+  .stat { font-family: var(--mono); font-size: 9px; letter-spacing: .18em; color: var(--dim); }
+  .stat b { display: block; font-size: 12px; letter-spacing: .12em; color: var(--green); margin-top: 3px; }
+  .stat.right { text-align: right; }
+
+  .clock { text-align: center; font-family: var(--mono); }
+  .clock .date { font-size: 9px; letter-spacing: .2em; color: var(--dim); }
+  .clock .time { font-size: 24px; letter-spacing: .08em; color: #fff; text-shadow: 0 0 18px rgba(53,184,240,.5); }
+
+  .company { text-align: right; }
+  .company b { font-size: 15px; font-style: italic; letter-spacing: .02em; }
+  .company span { display: block; font-family: var(--mono); font-size: 8px; letter-spacing: .22em; color: var(--dim); }
+
+  /* ---------- layout ---------- */
+  main { display: grid; grid-template-columns: 300px 1fr 320px; gap: 10px; min-height: 0; }
+  aside { display: grid; gap: 10px; min-height: 0; }
+  aside.left { grid-template-rows: 200px 1fr 172px 150px; }
+  aside.right { grid-template-rows: 190px 1fr 190px 176px; }
+
+  /* ---------- waveform ---------- */
+  .wave { display: flex; align-items: center; gap: 2px; height: 78px; }
+  .wave i {
+    flex: 1; background: linear-gradient(180deg, var(--cyan-bright), var(--cyan));
+    height: 3px; border-radius: 1px; transition: height .07s linear;
+    box-shadow: 0 0 6px rgba(53,184,240,.7);
+  }
+  .caption { margin-top: 12px; font-size: 13px; color: var(--cyan-bright); }
+  .caption.idle { color: var(--dim); }
+
+  /* ---------- action log ---------- */
+  .log { display: flex; flex-direction: column; gap: 11px; overflow: hidden; }
+  .log .row { font-size: 12px; }
+  .log .row span { color: var(--ice); }
+  .log .row .bar { height: 3px; background: rgba(56,170,240,.15); margin-top: 6px; }
+  .log .row .bar i { display: block; height: 100%; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
+  .log .empty { color: var(--dim); font-size: 12px; }
+
+  /* ---------- dials ---------- */
+  .dials { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; place-items: center; }
+  .dial { width: 78px; height: 78px; position: relative; }
+  .dial svg { transform: rotate(-90deg); }
+  .dial .val {
+    position: absolute; inset: 0; display: grid; place-content: center; text-align: center;
+    font-family: var(--mono);
+  }
+  .dial .val small { display: block; font-size: 8px; letter-spacing: .16em; color: var(--dim); }
+  .dial .val b { font-size: 15px; }
+
+  /* ---------- data stream ---------- */
+  .stream {
+    font-family: var(--mono); font-size: 9px; line-height: 1.35;
+    color: rgba(53,184,240,.5); word-break: break-all; overflow: hidden; height: 100%;
+  }
+
+  /* ---------- centre ---------- */
+  .centre { display: grid; grid-template-rows: auto 1fr auto; place-items: center; gap: 6px; min-height: 0; width: 100%; }
+  .state-line { text-align: center; }
+  .state-line b {
+    font-size: 26px; letter-spacing: .16em; text-transform: uppercase;
+    text-shadow: 0 0 24px rgba(53,184,240,.55);
+  }
+  .state-line span { display: block; font-family: var(--mono); font-size: 10px; letter-spacing: .3em; color: var(--dim); margin-top: 4px; }
+
+  /* the reactor and the results panel share this box: the reactor owns it
+     alone until a tool hands back something worth showing, then it shrinks
+     into the corner and the panel takes the room it gave up. */
+  .stage { position: relative; width: 100%; height: 100%; min-height: 0; }
+
+  .reactor {
+    position: absolute; top: 50%; left: 50%; transform-origin: top left;
+    width: min(52vh, 460px); aspect-ratio: 1; display: grid; place-items: center;
+    transform: translate(-50%, -50%) scale(1);
+    transition: transform .4s cubic-bezier(.4,0,.2,1), top .4s cubic-bezier(.4,0,.2,1), left .4s cubic-bezier(.4,0,.2,1);
+    z-index: 2;
+  }
+  .stage.docked .reactor {
+    top: 22px; left: 22px;
+    transform: translate(0, 0) scale(.35);
+  }
+  .ring { position: absolute; border-radius: 50%; }
+  .r1 { inset: 0; border: 1px solid rgba(53,184,240,.18); }
+  .r2 {
+    inset: 6%;
+    background: conic-gradient(from 0deg, transparent 0 200deg,
+      rgba(53,184,240,.85) 300deg, rgba(200,245,255,1) 348deg, transparent 360deg);
+    -webkit-mask: radial-gradient(circle, transparent 78%, #000 79%, #000 84%, transparent 85%);
+            mask: radial-gradient(circle, transparent 78%, #000 79%, #000 84%, transparent 85%);
+    animation: spin 7s linear infinite;
+  }
+  .r3 {
+    inset: 15%;
+    background: repeating-conic-gradient(from 0deg,
+      rgba(53,184,240,.75) 0 .8deg, transparent .8deg 5deg);
+    -webkit-mask: radial-gradient(circle, transparent 84%, #000 85%, #000 92%, transparent 93%);
+            mask: radial-gradient(circle, transparent 84%, #000 85%, #000 92%, transparent 93%);
+    animation: spinBack 26s linear infinite;
+  }
+  .r4 { inset: 24%; border: 1px dashed rgba(53,184,240,.35); animation: spinBack 18s linear infinite; }
+  .r5 {
+    inset: 32%; border: 2px solid transparent; border-right-color: rgba(200,245,255,.8);
+    animation: spin 3.2s linear infinite;
+  }
+  .glow {
+    position: absolute; inset: 30%; border-radius: 50%;
+    background: radial-gradient(circle, rgba(90,200,255,.5), rgba(20,90,150,.18) 55%, transparent 72%);
+    filter: blur(8px);
+  }
+  .name {
+    position: relative; font-size: clamp(28px, 5.4vh, 58px); letter-spacing: .34em;
+    text-indent: .34em; font-weight: 300; color: #fff;
+    text-shadow: 0 0 30px rgba(90,200,255,.85), 0 0 70px rgba(53,184,240,.45);
+  }
+
+  .thinking .r2 { animation-duration: 1.5s; }
+  .thinking .r5 { animation-duration: .8s; }
+  .speaking .glow { background: radial-gradient(circle, rgba(130,225,255,.7), rgba(30,120,190,.24) 55%, transparent 72%); }
+  .listening .r2 {
+    background: conic-gradient(from 0deg, transparent 0 210deg,
+      rgba(220,240,250,.8) 312deg, #fff 350deg, transparent 360deg);
+  }
+
+  /* ---------- typed results panel ---------- */
+  .resultPanel {
+    position: absolute; inset: 0; z-index: 1;
+    background: var(--panel);
+    border: 1px solid var(--edge);
+    border-radius: 16px;
+    backdrop-filter: blur(20px) saturate(150%);
+    -webkit-backdrop-filter: blur(20px) saturate(150%);
+    box-shadow: 0 16px 54px rgba(0,0,0,.5), 0 0 44px rgba(53,184,240,.12),
+                inset 0 1px 0 rgba(255,255,255,.06);
+    padding: 24px 30px 24px 210px;
+    display: flex; flex-direction: column; min-height: 0;
+    opacity: 0; transform: scale(.96) translateY(12px);
+    pointer-events: none;
+    transition: opacity .4s cubic-bezier(.4,0,.2,1), transform .4s cubic-bezier(.4,0,.2,1);
+  }
+  .stage.docked .resultPanel { opacity: 1; transform: scale(1) translateY(0); pointer-events: auto; }
+  .resultPanel::before, .resultPanel::after {
+    content: ""; position: absolute; width: 14px; height: 14px; pointer-events: none;
+    border-color: var(--cyan);
+  }
+  .resultPanel::before { top: -1px; left: -1px; border-top: 2px solid; border-left: 2px solid; }
+  .resultPanel::after { bottom: -1px; right: -1px; border-bottom: 2px solid; border-right: 2px solid; }
+
+  .rp-title {
+    font-family: var(--mono); font-size: 9px; letter-spacing: .2em; color: var(--dim);
+    text-transform: uppercase; padding-bottom: 10px; border-bottom: 1px solid rgba(56,170,240,.15);
+    margin-bottom: 10px; flex: none;
+  }
+  .rp-empty { color: var(--dim); font-size: 12px; padding: 10px 4px; }
+
+  /* -- weather -- */
+  .wx { display: flex; flex-direction: column; gap: 16px; height: 100%; min-height: 0; }
+  .wx-head { display: flex; align-items: center; gap: 18px; flex: none; }
+  .wx-icon { width: 76px; height: 76px; flex: none; }
+  .wx-icon svg { width: 100%; height: 100%; color: var(--cyan-bright); filter: drop-shadow(0 0 8px rgba(53,184,240,.5)); }
+  .wx-temp { font-size: 44px; font-weight: 200; color: #fff; line-height: 1; text-shadow: 0 0 20px rgba(53,184,240,.4); }
+  .wx-temp small { font-size: 20px; color: var(--dim); margin-left: 2px; font-weight: 300; }
+  .wx-cond { font-family: var(--mono); font-size: 12px; letter-spacing: .14em; color: var(--cyan-bright); text-transform: uppercase; margin-top: 4px; }
+  .wx-loc { font-size: 13px; color: var(--dim); margin-top: 2px; }
+  .wx-blocks { display: flex; gap: 10px; flex: none; }
+  .wx-block { flex: 1; background: rgba(9,24,38,.4); border: 1px solid rgba(56,170,240,.18); border-radius: 8px; padding: 8px 12px; }
+  .wx-block span { display: block; font-family: var(--mono); font-size: 8px; letter-spacing: .18em; color: var(--dim); }
+  .wx-block b { display: block; font-size: 15px; color: var(--ice); margin-top: 3px; font-weight: 500; }
+  .wx-forecast { display: flex; gap: 10px; margin-top: auto; flex: none; }
+  .wx-day { flex: 1; text-align: center; background: rgba(9,24,38,.35); border: 1px solid rgba(56,170,240,.14); border-radius: 8px; padding: 10px 6px; }
+  .wx-day-name { font-family: var(--mono); font-size: 9px; letter-spacing: .14em; color: var(--dim); text-transform: uppercase; }
+  .wx-day-icon { width: 30px; height: 30px; margin: 6px auto; }
+  .wx-day-icon svg { width: 100%; height: 100%; color: var(--cyan-bright); }
+  .wx-day-temps b { color: var(--ice); font-size: 13px; }
+  .wx-day-temps span { color: var(--dim); font-size: 12px; margin-left: 5px; }
+
+  /* -- email -- */
+  .em-list, .em-detail { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+  .em-rows { overflow-y: auto; min-height: 0; }
+  .em-row { display: flex; align-items: center; gap: 10px; padding: 10px 4px; border-bottom: 1px solid rgba(56,170,240,.08); cursor: pointer; transition: background .15s ease; }
+  .em-row:hover { background: rgba(53,184,240,.07); }
+  .em-dot { width: 7px; height: 7px; border-radius: 50%; background: transparent; flex: none; }
+  .em-dot.unread { background: var(--cyan-bright); box-shadow: 0 0 6px var(--cyan-bright); }
+  .em-row-main { flex: 1; min-width: 0; }
+  .em-from { font-size: 13px; color: var(--ice); }
+  .em-subject { font-size: 12px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .em-time { font-family: var(--mono); font-size: 9px; color: var(--dim); flex: none; }
+  .em-back {
+    align-self: flex-start; background: none; border: 1px solid rgba(56,170,240,.32); color: var(--cyan-bright);
+    font-family: var(--mono); font-size: 10px; letter-spacing: .1em; padding: 5px 10px; border-radius: 5px;
+    cursor: pointer; margin-bottom: 14px; flex: none;
+  }
+  .em-back:hover { background: rgba(53,184,240,.1); }
+  .em-detail-subject { font-size: 16px; color: #fff; flex: none; }
+  .em-detail-meta { font-family: var(--mono); font-size: 10px; color: var(--dim); margin-top: 4px; margin-bottom: 14px; flex: none; }
+  .em-detail-body { font-size: 13px; line-height: 1.6; color: var(--ice); overflow-y: auto; min-height: 0; white-space: pre-wrap; }
+
+  /* -- research -- */
+  .rs { display: flex; flex-direction: column; gap: 12px; height: 100%; min-height: 0; }
+  .rs-tag { font-family: var(--mono); font-size: 9px; letter-spacing: .16em; color: var(--green); }
+  .rs-tag.dim { color: var(--dim); }
+  .rs-winner { background: rgba(53,184,240,.08); border: 1px solid rgba(56,170,240,.3); border-radius: 10px; padding: 14px 16px; flex: none; }
+  .rs-name { font-size: 22px; color: #fff; margin-top: 5px; text-shadow: 0 0 16px rgba(53,184,240,.4); }
+  .rs-runner { padding: 2px 16px; flex: none; }
+  .rs-name.small { font-size: 15px; color: var(--ice); margin-top: 4px; font-weight: 400; }
+  .rs-why { font-size: 13px; color: var(--ice); line-height: 1.55; font-style: italic; overflow-y: auto; min-height: 0; }
+  .rs-sources { margin-top: auto; font-family: var(--mono); font-size: 10px; letter-spacing: .1em; color: var(--dim); flex: none; }
+
+  /* -- system -- */
+  .sy { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 8px; }
+  .sy-value { font-size: 64px; font-weight: 200; color: #fff; text-shadow: 0 0 26px rgba(53,184,240,.5); line-height: 1; }
+  .sy-label { font-family: var(--mono); font-size: 11px; letter-spacing: .3em; color: var(--cyan-bright); text-transform: uppercase; }
+  .sy-detail { font-size: 13px; color: var(--dim); }
+
+  /* -- list -- */
+  .ls { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+  .ls-rows { overflow-y: auto; min-height: 0; }
+  .ls-row { display: flex; align-items: baseline; gap: 12px; padding: 8px 4px; border-bottom: 1px solid rgba(56,170,240,.06); }
+  .ls-idx { font-family: var(--mono); font-size: 10px; color: var(--dim); width: 18px; flex: none; }
+  .ls-primary { font-size: 13px; color: var(--ice); }
+  .ls-secondary { font-size: 11px; color: var(--dim); margin-top: 2px; }
+
+  /* -- text fallback -- */
+  .tx { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+  .tx-body { overflow-y: auto; font-size: 14px; line-height: 1.6; color: var(--ice); white-space: pre-wrap; }
+
+  /* ---------- glass answer panel ---------- */
+  .said {
+    position: fixed;
+    left: 50%; bottom: 30px;
+    transform: translate(-50%, 14px) scale(.97);
+    width: min(64vw, 820px);
+    max-height: 34vh;
+    overflow-y: auto;
+    background: rgba(9, 24, 38, .5);
+    border: 1px solid rgba(56, 170, 240, .35);
+    border-radius: 16px;
+    backdrop-filter: blur(18px) saturate(150%);
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
+    box-shadow: 0 10px 44px rgba(0,0,0,.5), 0 0 34px rgba(53,184,240,.14),
+                inset 0 1px 0 rgba(255,255,255,.07);
+    padding: 16px 22px 18px;
+    text-align: left;
+    opacity: 0; pointer-events: none;
+    transition: opacity .32s ease, transform .32s ease;
+    z-index: 40;
+  }
+  .said::before {
+    content: "DAVID"; display: block; font-family: var(--mono); font-size: 9px;
+    letter-spacing: .3em; color: var(--cyan-bright); opacity: .85; margin-bottom: 8px;
+  }
+  .said span { font-size: 16px; line-height: 1.55; color: var(--ice); }
+  .said.show { opacity: 1; transform: translate(-50%, 0) scale(1); pointer-events: auto; }
+
+  /* ---------- protocols ---------- */
+  .proto { display: flex; flex-direction: column; gap: 12px; }
+  .proto .row { font-size: 11px; display: grid; grid-template-columns: 1fr auto; gap: 6px; }
+  .proto .row .tag { font-family: var(--mono); font-size: 9px; letter-spacing: .14em; }
+  .proto .row .tag.on { color: var(--green); }
+  .proto .row .tag.off { color: var(--dim); }
+  .proto .bar { grid-column: 1 / -1; height: 3px; background: rgba(56,170,240,.15); }
+  .proto .bar i { display: block; height: 100%; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
+
+  /* ---------- timeline ---------- */
+  .timeline { position: relative; padding-top: 6px; }
+  .timeline .track { height: 1px; background: rgba(56,170,240,.3); margin: 16px 0 10px; position: relative; }
+  .timeline .dot { position: absolute; top: -3px; width: 7px; height: 7px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 10px var(--cyan); }
+  .timeline .items { display: grid; grid-auto-flow: column; gap: 8px; }
+  .timeline .items div { font-family: var(--mono); font-size: 8px; letter-spacing: .1em; color: var(--dim); }
+  .timeline .items div b { display: block; color: var(--ice); font-size: 8px; margin-top: 3px; }
+
+  /* ---------- session ---------- */
+  .session { display: grid; grid-template-columns: 1fr 96px; gap: 12px; align-items: center; }
+  .session .rows { display: grid; gap: 9px; font-family: var(--mono); font-size: 9px; letter-spacing: .14em; color: var(--dim); }
+  .session .rows b { display: block; font-size: 15px; letter-spacing: .06em; color: var(--ice); margin-top: 2px; }
+  .session .rows b.good { color: var(--green); }
+
+  /* ---------- map ---------- */
+  .map { height: 100%; width: 100%; opacity: .75; }
+  .map .dotm { fill: rgba(53,184,240,.45); }
+  .map .hot { fill: var(--cyan-bright); }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes spinBack { to { transform: rotate(-360deg); } }
+  @keyframes blink { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
+  .blink { animation: blink 1.8s ease-in-out infinite; }
+
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="mark">D</div>
+    <div><b>DAVID OS</b><span id="ver">v1.0 · LIVE</span></div>
+  </div>
+  <div class="stat">SYSTEM STATUS<b id="sysStatus">STARTING</b></div>
+  <div class="clock">
+    <div class="date" id="date">—</div>
+    <div class="time" id="time">--:--:--</div>
+  </div>
+  <div class="stat right">NETWORK<b id="net">CHECKING</b></div>
+  <div class="company"><b>AIBY TECHNOLOGIES</b><span>INNOVATE. AUTOMATE. ELEVATE</span></div>
+</header>
+
+<main>
+  <aside class="left">
+    <section class="panel">
+      <h2>Voice Recognition</h2>
+      <div class="wave" id="wave"></div>
+      <div class="caption idle" id="voiceCaption">Standing by…</div>
+    </section>
+
+    <section class="panel">
+      <h2>Tasks Overview</h2>
+      <div class="log" id="log"><div class="empty">No tasks yet.</div></div>
+    </section>
+
+    <section class="panel">
+      <h2>System Monitor</h2>
+      <div class="dials">
+        <div class="dial" data-key="cpu"></div>
+        <div class="dial" data-key="ram"></div>
+        <div class="dial" data-key="disk"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Data Stream</h2>
+      <div class="stream" id="stream"></div>
+    </section>
+  </aside>
+
+  <section class="centre">
+    <div class="state-line">
+      <b id="stateBig">STANDING BY</b>
+      <span id="stateSub">— awaiting command —</span>
+    </div>
+
+    <div class="stage" id="stage">
+      <div class="reactor" id="reactor">
+        <div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div>
+        <div class="ring r4"></div><div class="ring r5"></div>
+        <div class="glow" id="glow"></div>
+        <div class="name">DAVID</div>
+      </div>
+      <div class="resultPanel" id="resultPanel"></div>
+    </div>
+
+    <div class="said" id="said"><span id="saidText"></span></div>
+  </section>
+
+  <aside class="right">
+    <section class="panel">
+      <h2>Global Overview</h2>
+      <svg class="map" id="map" viewBox="0 0 320 150" preserveAspectRatio="xMidYMid meet"></svg>
+    </section>
+
+    <section class="panel">
+      <h2>Active Protocols</h2>
+      <div class="proto" id="proto"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Mission Timeline</h2>
+      <div class="timeline">
+        <div class="track" id="track"></div>
+        <div class="items" id="timeline"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Session Status</h2>
+      <div class="session">
+        <div class="rows">
+          <div>UPTIME<b id="uptime">00:00</b></div>
+          <div>COMMANDS RUN<b id="cmdCount">0</b></div>
+          <div>LINK<b id="link" class="good">—</b></div>
+        </div>
+        <div class="dial" data-key="battery"></div>
+      </div>
+    </section>
+  </aside>
+</main>
+
+<script>
+// ---------- static furniture ----------
+const BARS = 58;
+const wave = document.getElementById("wave");
+for (let i = 0; i < BARS; i++) wave.appendChild(document.createElement("i"));
+const bars = [...wave.children];
+
+// dials
+document.querySelectorAll(".dial").forEach((d) => {
+  const label = { cpu: "CPU", ram: "RAM", disk: "DISK", battery: "PWR" }[d.dataset.key];
+  d.innerHTML = `
+    <svg width="100%" height="100%" viewBox="0 0 80 80">
+      <circle cx="40" cy="40" r="33" fill="none" stroke="rgba(56,170,240,.15)" stroke-width="6"/>
+      <circle cx="40" cy="40" r="33" fill="none" stroke="#35B8F0" stroke-width="6"
+              stroke-linecap="round" stroke-dasharray="207" stroke-dashoffset="207"
+              style="filter:drop-shadow(0 0 6px rgba(53,184,240,.8))"/>
+    </svg>
+    <div class="val"><small>${label}</small><b>—</b></div>`;
+});
+
+function setDial(key, pct) {
+  const d = document.querySelector(`.dial[data-key="${key}"]`);
+  if (!d || pct == null) return;
+  const arc = d.querySelectorAll("circle")[1];
+  arc.style.strokeDashoffset = String(207 - (207 * Math.max(0, Math.min(100, pct))) / 100);
+  arc.setAttribute("stroke", pct > 85 ? "#E8A33D" : "#35B8F0");
+  d.querySelector("b").textContent = Math.round(pct) + "%";
+}
+
+// world map — decorative, drawn as a dot grid with a few live-looking nodes
+(function drawMap() {
+  const svg = document.getElementById("map");
+  const LAND = [
+    [30,40,52,26],[46,30,26,18],[84,34,58,30],[96,64,40,44],[150,26,120,44],
+    [172,70,44,30],[236,88,52,34],[62,88,34,52]
+  ];
+  let out = "";
+  LAND.forEach(([x, y, w, h]) => {
+    for (let i = 0; i < w; i += 4)
+      for (let j = 0; j < h; j += 4)
+        if (Math.random() > .35)
+          out += `<rect class="dotm" x="${x + i}" y="${y + j}" width="1.6" height="1.6"/>`;
+  });
+  [[58,52],[112,46],[168,54],[196,86],[252,102],[92,96]].forEach(([x, y], i) => {
+    out += `<circle class="hot" cx="${x}" cy="${y}" r="2.4">
+      <animate attributeName="opacity" values="1;.25;1" dur="${2 + i * .4}s" repeatCount="indefinite"/>
+    </circle>`;
+  });
+  svg.innerHTML = out;
+})();
+
+// data stream — decorative
+setInterval(() => {
+  const el = document.getElementById("stream");
+  const rows = 14, cols = 46;
+  let out = "";
+  for (let r = 0; r < rows; r++) {
+    let line = "";
+    for (let c = 0; c < cols; c++) line += Math.random() > .5 ? "1" : "0";
+    out += line + "<br>";
+  }
+  el.innerHTML = out;
+}, 220);
+
+// clock
+setInterval(() => {
+  const now = new Date();
+  document.getElementById("time").textContent = now.toLocaleTimeString();
+  document.getElementById("date").textContent = now
+    .toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })
+    .toUpperCase();
+}, 1000);
+
+// ---------- live state ----------
+const STATE_TEXT = {
+  idle:      ["STANDING BY", "— awaiting command —"],
+  listening: ["LISTENING",   "— receiving input —"],
+  thinking:  ["PROCESSING",  "— carrying out tasks —"],
+  speaking:  ["RESPONDING",  "— transmitting —"],
+};
+
+let level = 0, target = 0, startedAt = Date.now(), commands = 0;
+
+function paint() {
+  level += (target - level) * 0.25;
+  bars.forEach((b, i) => {
+    const mid = 1 - Math.abs(i - (BARS - 1) / 2) / ((BARS - 1) / 2);
+    const h = 3 + level * 70 * (0.3 + mid * 0.7) * (0.45 + Math.random() * 0.55);
+    b.style.height = h.toFixed(1) + "px";
+  });
+  requestAnimationFrame(paint);
+}
+paint();
+
+// ---------- typed results panel ----------
+// A tool result with actual data lands here as s.panel = {type, data}.
+// Ordinary conversation never sets it, so this whole block sits dormant
+// until the first real result — see david_live.py's Panel class.
+
+function esc(v) {
+  return String(v ?? "").replace(/[&<>"']/g, (c) => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+const WEATHER_ICONS = {
+  sun: `<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="24" cy="24" r="9"/><path d="M24 4v6M24 38v6M4 24h6M38 24h6M9.5 9.5l4.2 4.2M34.3 34.3l4.2 4.2M9.5 38.5l4.2-4.2M34.3 13.7l4.2-4.2"/></svg>`,
+  "cloud-sun": `<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><g opacity=".75"><circle cx="16" cy="16" r="6"/><path d="M16 4v3M16 25v3M4 16h3M25 16h3M8 8l2.1 2.1M21.9 21.9L24 24M8 24l2.1-2.1M21.9 10.1L24 8"/></g><path d="M14 40h20a7 7 0 0 0 1-13.9A10 10 0 0 0 16 24a7 7 0 0 0-2 16z"/></svg>`,
+  cloud: `<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 36h23a8 8 0 0 0 1-15.9A11.5 11.5 0 0 0 15 24a8 8 0 0 0-2 12z"/></svg>`,
+  fog: `<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M10 18h20a7 7 0 1 0-.8-13.9A9.5 9.5 0 0 0 12 12" opacity=".8"/><path d="M6 26h36M6 34h36M6 42h36"/></svg>`,
+  rain: `<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 26h23a8 8 0 0 0 1-15.9A11.5 11.5 0 0 0 15 14a8 8 0 0 0-2 12z"/><path d="M15 33l-3 8M24 33l-3 8M33 33l-3 8"/></svg>`,
+  snow: `<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 24h23a8 8 0 0 0 1-15.9A11.5 11.5 0 0 0 15 12a8 8 0 0 0-2 12z"/><path d="M16 33v10M16 33l-4 3M16 33l4 3M16 40l-4-3M16 40l4-3M32 33v10M32 33l-4 3M32 33l4 3M32 40l-4-3M32 40l4-3"/></svg>`,
+  storm: `<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 24h20a8 8 0 0 0 1-15.9A11.5 11.5 0 0 0 15 12a8 8 0 0 0-2 12z"/><path d="M25 30l-6 9h6l-4 8"/></svg>`,
+};
+
+function renderWeather(d) {
+  const days = (d.forecast || []).slice(0, 4).map((f) => `
+    <div class="wx-day">
+      <div class="wx-day-name">${esc(f.day)}</div>
+      <div class="wx-day-icon">${WEATHER_ICONS[f.icon] || WEATHER_ICONS.cloud}</div>
+      <div class="wx-day-temps"><b>${f.hi ?? "—"}°</b><span>${f.lo ?? "—"}°</span></div>
+    </div>`).join("");
+  return `
+    <div class="wx">
+      <div class="wx-head">
+        <div class="wx-icon">${WEATHER_ICONS[d.icon] || WEATHER_ICONS.cloud}</div>
+        <div>
+          <div class="wx-temp">${d.temp}<small>${esc(d.unit)}</small></div>
+          <div class="wx-cond">${esc(d.condition)}</div>
+          <div class="wx-loc">${esc(d.location)}</div>
+        </div>
+      </div>
+      <div class="wx-blocks">
+        <div class="wx-block"><span>FEELS LIKE</span><b>${d.feels_like}${esc(d.unit)}</b></div>
+        <div class="wx-block"><span>WIND</span><b>${d.wind} ${esc(d.wind_unit)}</b></div>
+        <div class="wx-block"><span>HUMIDITY</span><b>${d.humidity}%</b></div>
+      </div>
+      <div class="wx-forecast">${days || '<div class="rp-empty">No forecast.</div>'}</div>
+    </div>`;
+}
+
+function renderResearch(d) {
+  return `
+    <div class="rs">
+      <div class="rp-title">RESEARCH${d.topic ? " · " + esc(d.topic) : ""}</div>
+      <div class="rs-winner">
+        <div class="rs-tag">RECOMMENDED</div>
+        <div class="rs-name">${esc(d.winner)}</div>
+      </div>
+      <div class="rs-runner">
+        <div class="rs-tag dim">RUNNER-UP</div>
+        <div class="rs-name small">${esc(d.runner_up)}</div>
+      </div>
+      <div class="rs-why">${esc(d.reasoning)}</div>
+      <div class="rs-sources">${d.sources || 0} source${d.sources === 1 ? "" : "s"} checked</div>
+    </div>`;
+}
+
+function renderSystem(d) {
+  return `
+    <div class="sy">
+      <div class="sy-value">${esc(d.value)}</div>
+      <div class="sy-label">${esc(d.label)}</div>
+      <div class="sy-detail">${esc(d.detail || "")}</div>
+    </div>`;
+}
+
+function renderList(d) {
+  const items = d.items || [];
+  const rows = items.length ? items.map((it, i) => `
+    <div class="ls-row">
+      <span class="ls-idx">${i + 1}</span>
+      <div>
+        <div class="ls-primary">${esc(it.primary)}</div>
+        ${it.secondary ? `<div class="ls-secondary">${esc(it.secondary)}</div>` : ""}
+      </div>
+    </div>`).join("") : '<div class="rp-empty">Nothing found.</div>';
+  return `
+    <div class="ls">
+      <div class="rp-title">${esc(d.title || "RESULTS")}</div>
+      <div class="ls-rows">${rows}</div>
+    </div>`;
+}
+
+function renderText(d) {
+  return `
+    <div class="tx">
+      <div class="rp-title">${esc(d.title || "RESULT")}</div>
+      <div class="tx-body">${esc(d.body || "")}</div>
+    </div>`;
+}
+
+// Email keeps its own tiny bit of client-side state — which message, if
+// any, is open — so switching to the full body never needs another trip
+// to David; every body he might open was already sent up front.
+let emailState = null;
+
+function emailHTML() {
+  if (!emailState) return "";
+  const { messages, openIndex } = emailState;
+  if (openIndex != null && messages[openIndex]) {
+    const m = messages[openIndex];
+    return `
+      <div class="em-detail">
+        <button class="em-back" data-back>&larr; back to inbox</button>
+        <div class="em-detail-subject">${esc(m.subject)}</div>
+        <div class="em-detail-meta">${esc(m.from)} &middot; ${esc(m.time)}</div>
+        <div class="em-detail-body">${esc(m.body) || "no readable text in it"}</div>
+      </div>`;
+  }
+  const rows = messages.length ? messages.map((m, i) => `
+    <div class="em-row" data-idx="${i}">
+      <span class="em-dot ${m.unread ? "unread" : ""}"></span>
+      <div class="em-row-main">
+        <div class="em-from">${esc(m.from)}</div>
+        <div class="em-subject">${esc(m.subject)}</div>
+      </div>
+      <div class="em-time">${esc(m.time)}</div>
+    </div>`).join("") : '<div class="rp-empty">Nothing here.</div>';
+  return `
+    <div class="em-list">
+      <div class="rp-title">INBOX &middot; ${messages.length}</div>
+      <div class="em-rows">${rows}</div>
+    </div>`;
+}
+
+function renderEmail(d) {
+  emailState = { messages: d.messages || [], openIndex: d.open_index != null ? d.open_index : null };
+  return emailHTML();
+}
+
+const PANEL_RENDERERS = {
+  weather: renderWeather, email: renderEmail, research: renderResearch,
+  system: renderSystem, list: renderList, text: renderText,
+};
+
+function renderPanel(p) {
+  if (p.type !== "email") emailState = null;
+  const fn = PANEL_RENDERERS[p.type] || renderText;
+  document.getElementById("resultPanel").innerHTML = fn(p.data || {});
+}
+
+document.getElementById("resultPanel").addEventListener("click", (e) => {
+  if (!emailState) return;
+  if (e.target.closest("[data-back]")) {
+    emailState.openIndex = null;
+    document.getElementById("resultPanel").innerHTML = emailHTML();
+    return;
+  }
+  const row = e.target.closest(".em-row");
+  if (row) {
+    emailState.openIndex = Number(row.dataset.idx);
+    document.getElementById("resultPanel").innerHTML = emailHTML();
+  }
+});
+
+let lastPanelKey = null;
+
+function apply(s) {
+  const [big, sub] = STATE_TEXT[s.status] || STATE_TEXT.idle;
+  document.getElementById("stateBig").textContent = big;
+  document.getElementById("stateSub").textContent = sub;
+
+  const reactor = document.getElementById("reactor");
+  reactor.className = "reactor " + s.status;
+
+  target = s.status === "listening" ? (s.micLevel || 0)
+         : s.status === "speaking" ? (s.outLevel || 0.55)
+         : 0.06;
+
+  const cap = document.getElementById("voiceCaption");
+  cap.textContent = { idle: "Standing by…", listening: "Listening…",
+                      thinking: "Analysing…", speaking: "Responding…" }[s.status];
+  cap.className = "caption" + (s.status === "idle" ? " idle" : "");
+
+  if (s.lastLine) document.getElementById("saidText").textContent = s.lastLine;
+
+  // A real tool result docks the reactor into the corner and brings the
+  // glass panel up, once, the first time one arrives — and it stays that
+  // way; only a newer result ever changes what's on it.
+  if (s.panel) {
+    document.getElementById("stage").classList.add("docked");
+    const key = s.panel.at + s.panel.type;
+    if (key !== lastPanelKey) {
+      lastPanelKey = key;
+      renderPanel(s.panel);
+    }
+  }
+
+  // The glass panel pops up while he's actually speaking the answer, and
+  // lingers a couple of seconds after so there is time to finish reading it,
+  // rather than staying parked on screen between questions.
+  const said = document.getElementById("said");
+  if (s.status === "speaking") {
+    said.classList.add("show");
+    clearTimeout(said._hideTimer);
+  } else if (s.status === "idle") {
+    clearTimeout(said._hideTimer);
+    said._hideTimer = setTimeout(() => said.classList.remove("show"), 3000);
+  }
+
+  document.getElementById("sysStatus").textContent = s.connected ? "OPTIMAL" : "OFFLINE";
+  document.getElementById("sysStatus").style.color = s.connected ? "var(--green)" : "var(--amber)";
+  document.getElementById("net").textContent = s.connected ? "CONNECTED" : "RECONNECTING";
+  document.getElementById("net").style.color = s.connected ? "var(--green)" : "var(--amber)";
+  document.getElementById("link").textContent = s.connected ? "STABLE" : "DOWN";
+
+  setDial("cpu", s.cpu); setDial("ram", s.ram);
+  setDial("disk", s.disk); setDial("battery", s.battery);
+
+  // tasks
+  const log = document.getElementById("log");
+  if (s.actions && s.actions.length) {
+    log.innerHTML = s.actions.slice(-5).reverse().map((a, i) => `
+      <div class="row"><span>&gt; ${a.name}</span>
+        <div class="bar"><i style="width:${100 - i * 16}%"></i></div>
+      </div>`).join("");
+  }
+
+  // protocols
+  const P = [
+    ["MICROPHONE",      s.micArmed],
+    ["MODEL LINK",      s.connected],
+    ["SCREEN VISION",   s.visionReady],
+    ["ACTION CONTROL",  s.actionsReady],
+  ];
+  document.getElementById("proto").innerHTML = P.map(([n, on]) => `
+    <div class="row">
+      <span>&gt; ${n}</span><span class="tag ${on ? "on" : "off"}">${on ? "ACTIVE" : "STANDBY"}</span>
+      <div class="bar"><i style="width:${on ? 100 : 22}%"></i></div>
+    </div>`).join("");
+
+  // timeline
+  if (s.actions && s.actions.length) {
+    const last = s.actions.slice(-4);
+    document.getElementById("timeline").innerHTML = last.map((a) =>
+      `<div>${a.at}<b>${a.name.replace(/_/g, " ").toUpperCase()}</b></div>`).join("");
+    document.getElementById("track").innerHTML = last.map((_, i) =>
+      `<div class="dot" style="left:${(i / Math.max(1, last.length - 1)) * 96}%"></div>`).join("");
+    commands = s.commandCount ?? commands;
+    document.getElementById("cmdCount").textContent = commands;
+  }
+}
+
+setInterval(() => {
+  const s = Math.floor((Date.now() - startedAt) / 1000);
+  document.getElementById("uptime").textContent =
+    String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+}, 1000);
+
+// ---------- connection to the assistant ----------
+function connect() {
+  const ws = new WebSocket("ws://127.0.0.1:8766");
+  ws.onmessage = (e) => { try { apply(JSON.parse(e.data)); } catch (_) {} };
+  ws.onclose = () => {
+    document.getElementById("sysStatus").textContent = "NO LINK";
+    setTimeout(connect, 1500);
+  };
+}
+connect();
+</script>
+</body>
+</html>
