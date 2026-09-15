@@ -210,6 +210,98 @@ class Browser(unittest.TestCase):
         self.assertIsNone(macos.show_in_browser_tab("Safari", "https://x.com", "x.com"))
 
 
+class Reminders(unittest.TestCase):
+    # a Wednesday, 2:24 in the morning
+    NOW = __import__("datetime").datetime(2026, 9, 16, 2, 24)
+
+    def test_clock_times(self):
+        for said, clock in (("9", (9, 0)), ("9am", (9, 0)), ("9:30 p.m.", (21, 30)),
+                            ("21:30", (21, 30)), ("12 am", (0, 0)), ("12pm", (12, 0))):
+            self.assertEqual(d._parse_clock(said), clock, said)
+        for said in ("25:00", "9:75", "noonish", ""):
+            self.assertIsNone(d._parse_clock(said), said)
+
+    def test_no_day_means_the_next_time_it_comes_round(self):
+        when, _ = d._resolve_when("9am", "", self.NOW)
+        self.assertEqual((when.day, when.hour), (16, 9))
+        when, _ = d._resolve_when("1am", "", self.NOW)
+        self.assertEqual((when.day, when.hour), (17, 1))
+
+    def test_days(self):
+        self.assertEqual(d._resolve_when("9am", "tomorrow", self.NOW)[0].day, 17)
+        self.assertEqual(d._resolve_when("9am", "Friday", self.NOW)[0].day, 18)
+        self.assertEqual(d._resolve_when("1am", "wednesday", self.NOW)[0].day, 23)
+        self.assertEqual(d._resolve_when("9am", "2026-10-01", self.NOW)[0].month, 10)
+
+    def test_impossible_requests_say_why(self):
+        self.assertIn("already passed", d._resolve_when("1am", "today", self.NOW)[1])
+        self.assertIn("which day", d._resolve_when("9am", "someday", self.NOW)[1])
+        self.assertIn("what time", d._resolve_when("soon", "", self.NOW)[1])
+
+    def test_reminder_script(self):
+        script = macos.reminder_script('Call "Mum"', self.NOW.replace(hour=9, minute=30))
+        self.assertIn('name:"Call \\"Mum\\""', script)
+        self.assertIn("set month of d to 9", script)
+        self.assertIn(f"set time of d to {9 * 3600 + 30 * 60}", script)
+        self.assertLess(script.index("set day of d to 1"), script.index("set month of d"))
+
+
+class Resampling(unittest.TestCase):
+    def pcm(self, values):
+        import array as a
+        return a.array("h", values).tobytes()
+
+    def samples(self, pcm):
+        import array as a
+        out = a.array("h")
+        out.frombytes(pcm)
+        return list(out)
+
+    def test_same_rate_is_untouched(self):
+        raw = self.pcm([1, 2, 3])
+        self.assertIs(d._resample(raw, 24000, 24000), raw)
+
+    def test_doubling_keeps_every_original_sample_in_place(self):
+        out = self.samples(d._resample(self.pcm([0, 100, 200, 300]), 24000, 48000))
+        self.assertEqual(len(out), 8)
+        self.assertEqual(out[::2], [0, 100, 200, 300])
+        self.assertEqual(out[1], 50)        # halfway between 0 and 100
+
+    def test_length_follows_the_rate_ratio(self):
+        raw = self.pcm(list(range(480)))
+        self.assertEqual(len(self.samples(d._resample(raw, 24000, 44100))), 882)
+        self.assertEqual(len(self.samples(d._resample(raw, 24000, 16000))), 320)
+
+    def test_empty_and_odd_input_survive(self):
+        self.assertEqual(d._resample(b"", 24000, 48000), b"")
+        self.assertEqual(len(self.samples(d._resample(b"\x01", 24000, 48000))), 0)
+
+    def test_a_tone_keeps_its_shape(self):
+        import math
+        tone = [int(12000 * math.sin(2 * math.pi * 200 * n / 24000)) for n in range(240)]
+        out = self.samples(d._resample(self.pcm(tone), 24000, 48000))
+        self.assertLessEqual(max(out), 12100)
+        self.assertGreaterEqual(min(out), -12100)
+        # the peaks should land at twice the sample index they did before
+        self.assertAlmostEqual(out[60], tone[30], delta=200)
+
+
+class Sound(unittest.TestCase):
+    def test_laptop_speakers_mean_no_talking_over_david(self):
+        self.assertFalse(d._interruption_allowed("auto", "MacBook Pro Speakers"))
+
+    def test_headphones_allow_talking_over_david(self):
+        for name in ("External Headphones", "AirPods Pro", "USB Headset"):
+            self.assertTrue(d._interruption_allowed("auto", name), name)
+
+    def test_unknown_output_plays_safe(self):
+        self.assertFalse(d._interruption_allowed("auto", ""))
+
+    def test_config_can_force_either_way(self):
+        self.assertTrue(d._interruption_allowed(True, "MacBook Pro Speakers"))
+        self.assertFalse(d._interruption_allowed(False, "AirPods Pro"))
+
+
 class Mac(unittest.TestCase):
     def test_screens(self):
         screens = macos.displays()

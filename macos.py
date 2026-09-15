@@ -535,5 +535,28 @@ def move_to_trash(path):
     return os.path.basename(dest)
 
 
+def reminder_script(title, when, notes=""):
+    """AppleScript for a Reminders entry due, and alerting, at `when`.
+       The day is set to 1 before the month changes, so moving from a 31st
+       into a 30-day month can't roll the date over."""
+    return (
+        "set d to current date\n"
+        "set day of d to 1\n"
+        f"set year of d to {when.year}\n"
+        f"set month of d to {when.month}\n"
+        f"set day of d to {when.day}\n"
+        f"set time of d to {when.hour * 3600 + when.minute * 60}\n"
+        'tell application "Reminders"\n'
+        f"  tell default list to make new reminder with properties "
+        f"{{name:{_q(title)}, body:{_q(notes)}, due date:d, remind me date:d}}\n"
+        "end tell")
+
+
+def add_reminder(title, when, notes=""):
+    """False when Reminders can't be reached — usually macOS Automation
+       permission, which it asks for the first time (hence the long timeout)."""
+    return osascript(reminder_script(title, when, notes), timeout=30)[0]
+
+
 def empty_trash():
     return osascript('tell application "Finder" to empty the trash', timeout=60)[0]

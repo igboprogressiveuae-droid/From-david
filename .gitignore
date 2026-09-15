@@ -14,6 +14,7 @@ gmail_token.json
 notion_token.json
 memory.json
 *.log
+*.wav
 config.json.tmp
 
 # macOS

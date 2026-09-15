@@ -12,6 +12,7 @@ Needs:  pip install -r requirements.txt, and GEMINI_API_KEY in .env
 Everything that touches the operating system itself lives in macos.py.
 """
 
+import array
 import asyncio
 import base64
 import json
@@ -61,6 +62,7 @@ CHUNK = 1024
 
 MODEL = "gemini-3.1-flash-live-preview"
 DEBUG = "--debug" in sys.argv
+SAVE_AUDIO = "--save-audio" in sys.argv   # each reply also goes to last_reply.wav, to judge the sound itself
 WS_URL = ("wss://generativelanguage.googleapis.com/ws/"
           "google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent")
 
@@ -2168,6 +2170,71 @@ def set_timer(minutes, label="timer"):
 TIMERS = []
 NOTIFY = lambda text: None      # replaced once the session is up
 
+_WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+
+
+def _parse_clock(text):
+    """'9', '9am', '9:30 p.m.', '21:30' -> (hour, minute), or None."""
+    m = re.fullmatch(r"\s*(\d{1,2})(?:[:.](\d{2}))?\s*(a\.?\s*m\.?|p\.?\s*m\.?)?\s*", str(text).lower())
+    if not m:
+        return None
+    hour, minute = int(m.group(1)), int(m.group(2) or 0)
+    half = re.sub(r"[.\s]", "", m.group(3) or "")
+    if half == "pm" and hour < 12:
+        hour += 12
+    elif half == "am" and hour == 12:
+        hour = 0
+    if hour > 23 or minute > 59:
+        return None
+    return hour, minute
+
+
+def _resolve_when(at, day="", now=None):
+    """A clock time plus an optional day -> (datetime, None), or (None, what went wrong).
+       No day means the next time that clock time comes round."""
+    now = now or datetime.now()
+    clock = _parse_clock(at)
+    if not clock:
+        return None, f"I could not tell what time {at} is"
+    day = (day or "").strip().lower()
+    if day in ("", "today"):
+        base = now.date()
+    elif day == "tomorrow":
+        base = now.date() + timedelta(days=1)
+    elif day in _WEEKDAYS:
+        base = now.date() + timedelta(days=(_WEEKDAYS.index(day) - now.weekday()) % 7)
+    else:
+        try:
+            base = datetime.strptime(day, "%Y-%m-%d").date()
+        except ValueError:
+            return None, f"I could not tell which day {day} is"
+
+    when = datetime(base.year, base.month, base.day, clock[0], clock[1])
+    if when <= now:
+        if day == "":
+            when += timedelta(days=1)
+        elif day in _WEEKDAYS:
+            when += timedelta(days=7)
+        else:
+            return None, "that time has already passed"
+    return when, None
+
+
+def set_reminder(title, at, day=""):
+    """A reminder in Apple Reminders that alerts at a clock time — on the Mac,
+       and on his iPhone through iCloud, whether or not David is running."""
+    when, problem = _resolve_when(at, day)
+    if problem:
+        return problem
+    if not macos.add_reminder(title, when):
+        return ("Reminders would not take it — macOS may be blocking me. Allow it under System "
+                "Settings, Privacy and Security, Automation, then ask again")
+    today = datetime.now().date()
+    spoken_day = ("today" if when.date() == today else
+                  "tomorrow" if when.date() == today + timedelta(days=1) else
+                  when.strftime("%A %d %B"))
+    return f"reminder set for {when.strftime('%I:%M %p').lstrip('0')} {spoken_day}: {title}"
+
 
 def write_file(name, content):
     path = _safe_path("~/Desktop", name)
@@ -2187,7 +2254,7 @@ ACTIONS = {
     "battery": battery, "what_time": what_time, "sleep_pc": sleep_pc,
     "shutdown": shutdown, "restart": restart, "cancel_shutdown": cancel_shutdown,
     "add_note": add_note, "read_notes": read_notes, "recent_downloads": recent_downloads,
-    "open_chart": open_chart, "empty_bin": empty_bin, "set_timer": set_timer,
+    "open_chart": open_chart, "empty_bin": empty_bin, "set_timer": set_timer, "set_reminder": set_reminder,
     "open_in_browser": open_in_browser, "close_tab": close_tab,
     "smart_open": smart_open, "list_installed": list_installed,
     "maximise_window": maximise_window, "minimise_window": minimise_window,
@@ -2485,6 +2552,12 @@ def declarations():
         {"name": "close_tab", "description": "Close the browser tab they are looking at. Use this when they ask to close a website, since sites are tabs and not apps.",
          "parameters": {"type": "OBJECT", "properties": {}}},
 
+        {"name": "set_reminder", "description": "Set a reminder that alerts at a clock time. Use this whenever they ask for an alarm, a wake-up, or a reminder at a particular time or day. It goes into Apple Reminders, so it alerts on the Mac and their iPhone even when you are not running. For a countdown like 'in 20 minutes', use set_timer instead.",
+         "parameters": {"type": "OBJECT", "properties": {
+             "title": s("what the reminder says, like 'Wake up' or 'Call the bank'"),
+             "at": s("the clock time, like 9am, 9:30 pm or 21:30"),
+             "day": s("today, tomorrow, a weekday like friday, or YYYY-MM-DD; blank for the next time that clock time comes round")},
+                        "required": ["title", "at"]}},
         {"name": "set_timer", "description": "Set a timer. They will be told out loud when it finishes.",
          "parameters": {"type": "OBJECT", "properties": {"minutes": {"type": "NUMBER", "description": "how long"},
                                                         "label": s("what it is for")},
@@ -2743,6 +2816,67 @@ class Reconnect(Exception):
     """Raised when Google asks us to close and come back."""
 
 
+def _resample(pcm, from_rate, to_rate):
+    """Raw 16-bit mono sound from one sample rate to another, by linear
+       interpolation.
+
+       Google sends 24000 Hz; Mac speakers run at 48000. Leaving that gap to
+       PortAudio's own conversion came out distorted — like a broken speaker —
+       while the same sound converted here, or by afplay, is clean.
+
+       Each chunk is converted on its own. At an exact ratio (48000 from 24000)
+       chunk edges line up perfectly; at an odd ratio there may be a faint tick
+       between chunks, still far better than what PortAudio was producing."""
+    if to_rate == from_rate:
+        return pcm
+    src = array.array("h")
+    src.frombytes(pcm[: len(pcm) // 2 * 2])
+    if not src:
+        return b""
+    # whole-number arithmetic for the count: dividing in decimals lost a
+    # sample on every chunk, which over a long reply is a drifting tick
+    count = len(src) * to_rate // from_rate
+    step = from_rate / to_rate
+    out = array.array("h")
+    for i in range(count):
+        at = i * step
+        j = int(at)
+        here = src[j]
+        following = src[j + 1] if j + 1 < len(src) else here
+        out.append(int(here + (following - here) * (at - j)))
+    return out.tobytes()
+
+
+def _write_wav(path, pcm, rate=SPEAKER_RATE):
+    """Raw 16-bit mono sound, exactly as Google sent it, as a playable .wav."""
+    import wave
+    with wave.open(path, "wb") as f:
+        f.setnchannels(1)
+        f.setsampwidth(2)
+        f.setframerate(rate)
+        f.writeframes(pcm)
+
+
+def _output_device_name():
+    try:
+        return sd.query_devices(kind="output")["name"]
+    except Exception:
+        return ""
+
+
+def _interruption_allowed(setting=None, output_name=None):
+    """Talking over David means passing the mic through while he speaks. On
+       built-in speakers, right beside the built-in mic and with no echo
+       cancellation, his own voice counted as an interruption and cut him off
+       mid-word. "auto" allows it only when the sound goes somewhere else —
+       headphones, AirPods, a headset. true or false in config forces it."""
+    setting = CFG.get("allow_interruption", "auto") if setting is None else setting
+    if setting != "auto":
+        return bool(setting)
+    name = (_output_device_name() if output_name is None else output_name).lower()
+    return bool(name) and "speakers" not in name
+
+
 class SilenceWatch:
     """Notices a microphone sending nothing but exact digital zeros. That is
        what macOS hands over when Microphone permission is off — no error, just
@@ -2799,6 +2933,21 @@ class Live:
         self.last_user_utterance = ""    # what he actually said, last completed turn
         self.last_user_utterance_at = 0.0
         self.silence = SilenceWatch()
+        self.can_interrupt = True        # decided per session, from where the sound goes
+        self.audio_mime = ""             # the format Google says his voice arrives in
+        self.saved_reply = b""           # --save-audio: this reply's sound so far
+        self.underflows = 0              # times the speaker ran dry mid-sound
+
+    def _note_audio_format(self, mime):
+        """Log the voice's audio format once. If Google sends a different sample
+           rate from the one the speaker is opened at, the voice plays warped."""
+        if not mime or mime == self.audio_mime:
+            return
+        self.audio_mime = mime
+        log("David's voice arrives as", mime)
+        rate = re.search(r"rate=(\d+)", mime)
+        if rate and int(rate.group(1)) != SPEAKER_RATE:
+            log(f"  but the speaker plays at {SPEAKER_RATE} Hz — his voice will sound wrong")
 
     def mic_callback(self, indata, frames, t, status):
         import array as _a, math as _m
@@ -2826,7 +2975,7 @@ class Live:
         # _out_level_est, updated live in play_forever — with a floor so it
         # never gets so low that room noise counts as an interruption.
         if self.speaking.is_set():
-            if not CFG.get("allow_interruption", True):
+            if not self.can_interrupt:
                 return
             now = time.time()
             floor = float(CFG.get("interrupt_threshold_min", 1800))
@@ -2889,6 +3038,9 @@ class Live:
                     HUD.set(status="speaking" if spoken else "listening")
 
                 if server.get("turnComplete"):
+                    if SAVE_AUDIO and self.saved_reply:
+                        _write_wav(os.path.join(HERE, "last_reply.wav"), self.saved_reply)
+                        self.saved_reply = b""
                     HUD.set(status="idle", outLevel=0,
                             lastLine=(self.said or self.you_said).strip()[:4000])
                     if self.you_said.strip():
@@ -2905,7 +3057,11 @@ class Live:
                 for part in (server.get("modelTurn") or {}).get("parts", []):
                     blob = part.get("inlineData")
                     if blob and blob.get("data"):
-                        self.out.put(base64.b64decode(blob["data"]))
+                        audio = base64.b64decode(blob["data"])
+                        self._note_audio_format(blob.get("mimeType", ""))
+                        self.out.put(audio)
+                        if SAVE_AUDIO:
+                            self.saved_reply += audio
                     if part.get("text"):
                         log("David:", part["text"].strip())
                 if server.get("interrupted"):
@@ -3062,10 +3218,28 @@ class Live:
     def play_forever(self):
         """Runs on its own thread, feeding whatever comes back to the speakers.
            Holds the microphone shut while anything is playing."""
-        with sd.RawOutputStream(samplerate=SPEAKER_RATE, channels=1, dtype="int16") as speaker:
+        # Play at the speaker's own rate and convert on the way in — see
+        # _resample. Asking PortAudio for 24000 Hz on a 48000 Hz speaker
+        # sounded broken, while the same sound converted here is clean.
+        try:
+            rate = int(sd.query_devices(kind="output")["default_samplerate"])
+        except Exception:
+            rate = SPEAKER_RATE
+        if rate != SPEAKER_RATE:
+            log(f"playing at the speaker's own {rate} Hz, converting up from {SPEAKER_RATE} Hz")
+
+        # "high" latency is still only ~20ms on a Mac, but it gives the speaker a
+        # real buffer — at the default, uneven network chunks came out as crackle.
+        with sd.RawOutputStream(samplerate=rate, channels=1, dtype="int16",
+                                latency="high") as speaker:
             while True:
                 chunk = self.out.get()
+                starting = not self.speaking.is_set()
                 self.speaking.set()
+                if starting:
+                    # a new answer: let a little more of it arrive before playing,
+                    # so the gaps between network chunks don't become stutters
+                    time.sleep(float(CFG.get("playback_prebuffer_ms", 150)) / 1000)
 
                 # He's talking over David right now — go quiet immediately
                 # rather than finishing the sentence while the interruption
@@ -3094,7 +3268,11 @@ class Live:
                 self._out_level_est = 0.7 * self._out_level_est + 0.3 * raw_rms
                 if UI:
                     HUD.set(outLevel=min(1.0, raw_rms / 32768 * 6), status="speaking")
-                speaker.write(chunk)
+                if speaker.write(_resample(chunk, SPEAKER_RATE, rate)):
+                    # the speaker ran dry before this chunk arrived — heard as a crackle
+                    self.underflows += 1
+                    if self.underflows in (1, 10, 100) or self.underflows % 500 == 0:
+                        log(f"speaker ran out of sound {self.underflows} time(s) so far")
 
                 if self.out.empty():
                     time.sleep(0.45)          # let the room settle
@@ -3182,6 +3360,10 @@ class Live:
                     }
                 }))
 
+            self.can_interrupt = _interruption_allowed()
+            if not self.can_interrupt and not self.resume_handle:
+                log("sound is going to the laptop speakers, so David stops listening while he "
+                    "talks — his own voice was cutting him off. Use headphones to interrupt him.")
             device = CFG.get("input_device")
             with sd.RawInputStream(samplerate=MIC_RATE, blocksize=CHUNK, dtype="int16",
                                    channels=1, callback=self.mic_callback,
