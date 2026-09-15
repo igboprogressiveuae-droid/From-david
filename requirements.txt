@@ -1,0 +1,8 @@
+websockets>=13
+sounddevice>=0.4
+requests>=2.31
+
+# Only needed to connect Gmail properly (instead of reading it off the screen)
+google-auth-oauthlib
+google-api-python-client
+google-auth-httplib2

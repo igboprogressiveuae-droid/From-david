@@ -1,19 +1,19 @@
 {
-  "api_key": "PASTE_YOUR_GEMINI_API_KEY_HERE",
-  "groq_key": "PASTE_YOUR_GROQ_API_KEY_HERE",
-  "groq_vision_model": "qwen/qwen3.6-27b",
+  "owner_name": "Uche",
+  "owner_about": "General Secretary of IPC, and learning to code.",
+  "home_location": "",
   "model": "gemini-3.6-flash",
   "live_model": "gemini-3.1-flash-live-preview",
   "live_voice": "Charon",
-  "ui_monitor": 2,
+  "vision_model": "",
+  "groq_vision_model": "qwen/qwen3.6-27b",
+  "groq_search_model": "groq/compound",
+  "ui_monitor": 1,
   "work_monitor": 1,
   "ui_browser": "edge",
   "work_browser": "chrome",
   "auto_place": true,
-  "monitor_names": {
-    "1": "the left screen",
-    "2": "the right screen"
-  },
+  "monitor_names": {},
   "allow_interruption": true,
   "interrupt_threshold_min": 1800,
   "interrupt_echo_margin": 1.6,
@@ -21,46 +21,31 @@
   "duplicate_window": 25,
   "email_mode": "browser",
   "input_device": null,
-  "confirm_destructive": true,
-  "log_file": "david.log",
-  "wake_words": [
-    "david",
-    "dabid",
-    "davit",
-    "davide",
-    "dave it"
-  ],
-  "sleep_words": [
-    "go to sleep",
-    "stop listening",
-    "never mind",
-    "that's all david"
-  ],
   "apps": {
-    "chrome": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "chrome": "Google Chrome",
+    "edge": "Microsoft Edge",
+    "brave": "Brave Browser",
+    "safari": "Safari",
+    "finder": "Finder",
+    "notes": "Notes",
+    "calculator": "Calculator",
+    "settings": "System Settings",
+    "activity monitor": "Activity Monitor",
     "whatsapp": "whatsapp://",
-    "telegram": "tg://",
-    "notepad": "notepad.exe",
-    "calculator": "calc.exe",
-    "explorer": "explorer.exe",
-    "file explorer": "explorer.exe",
-    "settings": "ms-settings:",
-    "task manager": "taskmgr.exe"
+    "telegram": "tg://"
   },
   "browsers": {
-    "chrome": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-    "edge": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
-    "brave": "C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe",
-    "firefox": "C:\\Program Files\\Mozilla Firefox\\firefox.exe"
+    "chrome": "Google Chrome",
+    "edge": "Microsoft Edge",
+    "brave": "Brave Browser",
+    "safari": "Safari"
   },
   "sites": {
-    "tradingview": "https://www.tradingview.com/chart/",
     "gmail": "https://mail.google.com",
     "whatsapp": "https://web.whatsapp.com",
     "telegram": "https://web.telegram.org",
     "youtube": "https://www.youtube.com",
-    "fundednext": "https://app.fundednext.com",
-    "solarmarkethub": "https://solarmarkethub.ng"
+    "tradingview": "https://www.tradingview.com/chart/"
   },
   "search_folders": [
     "~/Desktop",
@@ -73,12 +58,12 @@
     "documents": "~/Documents",
     "downloads": "~/Downloads"
   },
-  "vision_model": "",
   "vision_max_width": 1000,
   "vision_work_screen_only": true,
   "vision_backoff_minutes": 20,
+  "vision_thinking": "low",
+  "search_thinking": "low",
   "display_mode": "full",
   "compact_width": 320,
-  "compact_height": 260,
-  "groq_search_model": "groq/compound"
+  "compact_height": 260
 }

@@ -1,29 +1,27 @@
 """
-David, live.
-Created by Ibans.
+David, live — on macOS.
+Created by Ibans; ported to the Mac.
 
 One websocket to Google. Your microphone streams up, his voice streams back,
 and he can act on your machine mid-sentence. No local speech recognition, no
 local text to speech, no waiting for a round trip after you finish talking.
 
-    python david_live.py
+    python david_live.py --ui
 
-Needs:  pip install websockets sounddevice requests
-Uses the same config.json as david.py.
+Needs:  pip install -r requirements.txt, and GEMINI_API_KEY in .env
+Everything that touches the operating system itself lives in macos.py.
 """
 
 import asyncio
 import base64
-import ctypes
 import json
 import os
 import queue
 import re
 import shutil
-import subprocess
 import sys
+import tempfile
 import urllib.parse
-import webbrowser
 from datetime import datetime, timedelta
 
 import threading
@@ -45,10 +43,14 @@ try:
 except ImportError:
     _HAVE_OAUTH_NOTION = False
 
+if sys.platform != "darwin":
+    sys.exit("This version of David runs on macOS. The Windows original is in the git history.")
+
 import requests
 import sounddevice as sd
 import websockets
-from PIL import Image, ImageGrab
+
+import macos
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 UI = "--ui" in sys.argv or "--hud" in sys.argv
@@ -67,14 +69,38 @@ WS_URL = ("wss://generativelanguage.googleapis.com/ws/"
 # config
 # ----------------------------------------------------------------------------
 
+def _load_env_file():
+    """KEY=value lines from .env next to this script, into the environment.
+       Anything already set in the shell wins."""
+    path = os.path.join(HERE, ".env")
+    if not os.path.exists(path):
+        return
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
+
+
 def load_config():
     path = os.path.join(HERE, "config.json")
     if not os.path.exists(path):
         sys.exit("config.json is missing.")
     with open(path, encoding="utf-8") as f:
         cfg = json.load(f)
-    if cfg.get("api_key", "").startswith("PASTE"):
-        sys.exit("Put your API key in config.json first.")
+
+    # Keys come from the environment or .env, never config.json — that file
+    # is committed, and the repository is public.
+    _load_env_file()
+    cfg["api_key"] = os.environ.get("GEMINI_API_KEY", "").strip()
+    cfg["groq_key"] = os.environ.get("GROQ_API_KEY", "").strip()
+    if os.environ.get("EMAIL_ADDRESS"):
+        cfg["email"] = {**cfg.get("email", {}), "address": os.environ["EMAIL_ADDRESS"],
+                        "app_password": os.environ.get("EMAIL_APP_PASSWORD", "")}
+    if not cfg["api_key"] and "--check" not in sys.argv:
+        sys.exit("No Gemini key. Copy .env.example to .env and put your key in it.")
     return cfg
 
 
@@ -128,6 +154,11 @@ class Panel:
         self.data = data
 
 
+def _speech(result):
+    """The spoken half of a tool result, whether or not it built a Panel."""
+    return result.speech if isinstance(result, Panel) else result
+
+
 # ----------------------------------------------------------------------------
 # things he can do
 # ----------------------------------------------------------------------------
@@ -138,13 +169,12 @@ def expand(p):
 
 def _open_web(url, new_window=False):
     """Every web address goes through his working browser, never the system default."""
-    browser = CFG.get("work_browser") or "chrome"
-    exe = CFG.get("browsers", {}).get(browser)
-    if exe and os.path.exists(exe):
-        args = [exe, "--new-window", url] if new_window else [exe, url]
-        subprocess.Popen(args)
+    app = CFG.get("browsers", {}).get(CFG.get("work_browser") or "chrome")
+    if app and _app_path(app):
+        chromium = app != "Safari"
+        macos.open_target(url, app, ["--new-window"] if new_window and chromium else None)
         return True
-    webbrowser.open(url)
+    macos.open_target(url)
     return False
 
 
@@ -169,11 +199,8 @@ def open_app(name):
     target = CFG.get("apps", {}).get(name.lower())
     if not target:
         return f"{name} is not in the app list."
-    try:
-        os.startfile(target) if os.path.exists(target) else subprocess.Popen(target, shell=False)
-    except Exception:
-        subprocess.Popen(f'start "" "{target}"', shell=True)
-    return f"opened {name}"
+    ok = macos.open_target(target) if "://" in target else macos.launch_app(target)
+    return f"opened {name}" if ok else f"{name} would not open — is it installed?"
 
 
 def open_site(name):
@@ -209,16 +236,18 @@ def open_in_browser(browser, target):
     exe = browsers.get(browser.lower()) or CFG.get("apps", {}).get(browser.lower())
     url = _resolve(target)
 
-    if not exe or not os.path.exists(exe):
+    if not exe or not _app_path(exe):
         _open_web(url)
-        return f"{browser} is not in my list, so I used the default browser"
+        return f"{browser} is not installed or not in my list, so I used the usual browser"
 
-    subprocess.Popen([exe, url])
+    macos.open_target(url, exe)
     return f"opened {target} in {browser}"
 
 
 def close_tab():
-    _press(0x11, 0x57)          # ctrl + w
+    if not macos.can_control():
+        return macos.NO_CONTROL
+    macos.press("w", "cmd")
     return "closed the tab"
 
 
@@ -231,7 +260,7 @@ def open_file(name):
     hits = find_file(name)
     if not hits:
         return f"nothing found matching {name}"
-    os.startfile(hits[0])
+    macos.open_target(hits[0])
     return f"opened {os.path.basename(hits[0])}"
 
 
@@ -254,21 +283,16 @@ def open_folder(name):
                 break
     if not root:
         return f"no folder called {name}"
-    os.startfile(root)
+    macos.open_target(root)
     return f"opened {os.path.basename(root)}"
 
 
 def volume(direction):
-    key = {"up": 0xAF, "down": 0xAE, "mute": 0xAD}.get(direction, 0xAF)
-    for _ in range(1 if direction == "mute" else 5):
-        ctypes.windll.user32.keybd_event(key, 0, 0, 0)
-        ctypes.windll.user32.keybd_event(key, 0, 2, 0)
-    return "done"
+    return "done" if macos.change_volume(str(direction).lower()) else "the volume would not change"
 
 
 def lock():
-    ctypes.windll.user32.LockWorkStation()
-    return "locking"
+    return "locking" if macos.lock_screen() else "I could not lock the screen"
 
 
 def _safe_path(root, name):
@@ -286,11 +310,8 @@ def delete_file(name):
     hits = find_file(name)
     if not hits:
         return f"nothing found matching {name}"
-    target = hits[0]
-    bin_dir = expand("~/.david_trash")
-    os.makedirs(bin_dir, exist_ok=True)
-    shutil.move(target, os.path.join(bin_dir, os.path.basename(target)))
-    return f"moved {os.path.basename(target)} to the recovery folder"
+    macos.move_to_trash(hits[0])
+    return f"moved {os.path.basename(hits[0])} to the Trash — Put Back in Finder undoes it"
 
 
 def rename_file(name, new_name):
@@ -305,57 +326,22 @@ def rename_file(name, new_name):
 
 # ---- typing and clipboard ----
 
-def _press(*codes):
-    for c in codes:
-        ctypes.windll.user32.keybd_event(c, 0, 0, 0)
-    for c in reversed(codes):
-        ctypes.windll.user32.keybd_event(c, 0, 2, 0)
-
-
 def to_clipboard(text):
-    subprocess.run("clip", input=text.encode("utf-16-le"), shell=True,
-                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    return "copied"
+    return "copied" if macos.set_clipboard(text) else "the clipboard would not take it"
 
 
 def type_text(text):
     """Put text into whatever window he is in — dictation, essentially."""
-    to_clipboard(text)
+    if not macos.can_control():
+        return macos.NO_CONTROL
+    macos.set_clipboard(text)
     time.sleep(0.15)
-    _press(0x11, 0x56)          # ctrl + v
+    macos.press("v", "cmd")
     return "typed it"
 
 
-_user32 = ctypes.windll.user32
-_kernel32 = ctypes.windll.kernel32
-_user32.GetClipboardData.restype = ctypes.c_void_p
-_kernel32.GlobalLock.restype = ctypes.c_void_p
-_kernel32.GlobalLock.argtypes = [ctypes.c_void_p]
-_kernel32.GlobalUnlock.argtypes = [ctypes.c_void_p]
-_CF_UNICODETEXT = 13
-
-
 def read_clipboard():
-    # Native clipboard read instead of shelling out to PowerShell for
-    # Get-Clipboard — same PowerShell-startup tax as everything else here
-    # for what is, in-process, a sub-millisecond call.
-    if not _user32.OpenClipboard(0):
-        return "the clipboard is empty"
-    try:
-        if not _user32.IsClipboardFormatAvailable(_CF_UNICODETEXT):
-            return "the clipboard is empty"
-        handle = _user32.GetClipboardData(_CF_UNICODETEXT)
-        if not handle:
-            return "the clipboard is empty"
-        ptr = _kernel32.GlobalLock(handle)
-        if not ptr:
-            return "the clipboard is empty"
-        try:
-            text = (ctypes.wstring_at(ptr) or "").strip()
-        finally:
-            _kernel32.GlobalUnlock(handle)
-    finally:
-        _user32.CloseClipboard()
+    text = macos.get_clipboard()
     return text[:1200] if text else "the clipboard is empty"
 
 
@@ -367,26 +353,17 @@ _APP_INDEX = None
 
 
 def _index_apps():
-    """Every shortcut in the Start Menu, so he can open anything installed."""
+    """Every app in /Applications and friends, so he can open anything installed."""
     global _APP_INDEX
-    if _APP_INDEX is not None:
-        return _APP_INDEX
+    if _APP_INDEX is None:
+        _APP_INDEX = macos.installed_apps()
+        log(f"indexed {len(_APP_INDEX)} installed apps")
+    return _APP_INDEX
 
-    roots = [
-        os.path.join(os.environ.get("ProgramData", ""), r"Microsoft\Windows\Start Menu\Programs"),
-        os.path.join(os.environ.get("APPDATA", ""), r"Microsoft\Windows\Start Menu\Programs"),
-    ]
-    found = {}
-    for root in roots:
-        if not os.path.isdir(root):
-            continue
-        for base, _dirs, files in os.walk(root):
-            for f in files:
-                if f.lower().endswith((".lnk", ".url")):
-                    found.setdefault(os.path.splitext(f)[0].lower(), os.path.join(base, f))
-    _APP_INDEX = found
-    log(f"indexed {len(found)} installed programs")
-    return found
+
+def _app_path(name):
+    """The installed .app for an exact name like "Google Chrome", or None."""
+    return _index_apps().get(str(name).lower())
 
 
 def find_installed(name):
@@ -413,8 +390,8 @@ def smart_open(name):
 
     installed = find_installed(name)
     if installed:
-        os.startfile(installed)
-        return f"opened {os.path.basename(os.path.splitext(installed)[0])}"
+        macos.launch_app(installed)
+        return f"opened {macos.app_name(installed)}"
 
     site = CFG.get("sites", {}).get(name.lower())
     if site:
@@ -451,18 +428,18 @@ def copy_image_to_clipboard(path=None):
     path = path or _latest_screenshot()
     if not path:
         return "there is no screenshot to copy"
-    ps = ("Add-Type -AssemblyName System.Windows.Forms,System.Drawing; "
-          f"$img = [Drawing.Image]::FromFile('{path}'); "
-          "[Windows.Forms.Clipboard]::SetImage($img)")
-    subprocess.run(["powershell", "-NoProfile", "-STA", "-Command", ps],
-                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    if not macos.image_to_clipboard(path):
+        return "that image would not go on the clipboard"
     return f"{os.path.basename(path)} is on the clipboard"
 
 
 def screenshot():
+    if not macos.can_see_screen():
+        return macos.NO_SCREEN
     name = f"screenshot-{datetime.now():%Y-%m-%d_%H-%M-%S}.png"
     path = os.path.join(expand("~/Desktop"), name)
-    ImageGrab.grab(all_screens=True).save(path)
+    if not macos.capture(path):
+        return "the screenshot did not save"
     return f"saved {name} to the desktop"
 
 
@@ -509,7 +486,7 @@ def remember(fact, category="general"):
     items.append({"fact": fact.strip(), "category": category,
                   "learned": datetime.now().strftime("%Y-%m-%d")})
     _save_memory(items)
-    return f"noted, I will remember that"
+    return "noted, I will remember that"
 
 
 def recall(about=""):
@@ -556,7 +533,7 @@ def memory_for_prompt():
     for cat, facts in by_cat.items():
         lines.append(f"  {cat}:")
         lines += [f"    - {f}" for f in facts[-25:]]
-    return ("\n\nThings he has told you to remember. Treat these as true and act on them "
+    return ("\n\nThings they have told you to remember. Treat these as true and act on them "
             "without being reminded:\n" + "\n".join(lines))
 
 
@@ -803,33 +780,19 @@ def check_gmail(sender="", subject="", hours=24, unread_only=False, question="")
     """Open Gmail already signed in, search it, and read the list off the screen.
        Opens one window the first time and then reuses that same tab."""
     url = _gmail_search_url(sender, subject, hours, unread_only)
+    reused = _show_web(url, "mail.google.com")
 
     if not vision_available():
-        if _activate("gmail"):
-            _navigate_current_tab(url)
-        else:
-            _open_web(url, new_window=True)
-            _remember_window("gmail")
         return ("Gmail is open with that search, but I cannot read the screen right now — "
                 "the daily vision quota is used up. Take a look yourself for now.")
 
-    if _activate("gmail"):
-        _navigate_current_tab(url)
-        time.sleep(4)
-    else:
-        browser = CFG.get("work_browser") or "chrome"
-        exe = CFG.get("browsers", {}).get(browser)
-        if exe and os.path.exists(exe):
-            subprocess.Popen([exe, "--new-window", url])
-        else:
-            _open_web(url)
-        time.sleep(4)
-        _remember_window("gmail")
+    time.sleep(3 if reused else 4)
+    if not reused:
         place_active_window()
         time.sleep(1.8)
 
     ask = question or (
-        "This is his Gmail. Read the message list and tell him exactly what is there: who each "
+        "This is their Gmail. Read the message list and say exactly what is there: who each "
         "message is from, the subject, and the date shown beside it. Be precise about dates — if "
         "something is from yesterday, say yesterday, do not call it today. If the list is empty, "
         "say plainly that there is nothing" + (f" from {sender}" if sender else "") + "."
@@ -844,7 +807,7 @@ def check_gmail(sender="", subject="", hours=24, unread_only=False, question="")
 def open_gmail_message(which=1):
     """Open one of the messages on screen and read it out."""
     ordinal = {1: "first", 2: "second", 3: "third", 4: "fourth", 5: "fifth"}.get(int(which), "first")
-    result = click_on(f"the {ordinal} email in the message list")
+    click_on(f"the {ordinal} email in the message list")
     time.sleep(2.5)
     answer, err = _look(
         "This is an open email. Read out what it actually says — who wrote it and the body of "
@@ -883,25 +846,19 @@ def _launch_app_or_web(app):
     key = app.lower()
 
     configured = CFG.get("apps", {}).get(key)
-    if configured:
-        try:
-            os.startfile(configured) if os.path.exists(configured) else subprocess.Popen(configured, shell=False)
+    if configured and "://" not in configured and _app_path(configured):
+        if macos.launch_app(configured):
             return "app"
-        except Exception:
-            pass
 
     installed = find_installed(app)
-    if installed:
-        os.startfile(installed)
+    if installed and macos.launch_app(installed):
         return "app"
 
-    proto = APP_PROTOCOLS.get(key)
-    if proto:
-        try:
-            os.startfile(proto)
-            return "app"
-        except Exception:
-            pass
+    # `open whatsapp://` fails when nothing is installed to handle it,
+    # which is exactly when the website below should take over
+    proto = configured if configured and "://" in configured else APP_PROTOCOLS.get(key)
+    if proto and macos.open_target(proto):
+        return "app"
 
     site = CFG.get("sites", {}).get(key)
     if site:
@@ -913,6 +870,8 @@ def _launch_app_or_web(app):
 def check_chat(person, question="", app="whatsapp"):
     """Personal messaging has no API, so this opens the chat and reads the
        screen the way he would himself. Uses the installed app if he has it."""
+    if not macos.can_control():
+        return macos.NO_CONTROL
     if not vision_available():
         _launch_app_or_web(app)
         return (f"{app} is open on your screen, but I cannot read it right now — "
@@ -930,9 +889,9 @@ def check_chat(person, question="", app="whatsapp"):
     # find the person by searching in the app
     click_on("the chat search box or search field")
     time.sleep(0.8)
-    to_clipboard(person)
+    macos.set_clipboard(person)
     time.sleep(0.2)
-    _press(0x11, 0x56)
+    macos.press("v", "cmd")
     time.sleep(1.6)
     click_on(f"the chat or conversation with {person} in the results list")
     time.sleep(2.2)
@@ -953,34 +912,38 @@ _WINDOWS = {}
 
 
 def _remember_window(key):
+    """macOS gives no window handle to hold on to from here, so remember the
+       app that came to the front — activating it later brings back its
+       frontmost window."""
     time.sleep(0.4)
-    hwnd = ctypes.windll.user32.GetForegroundWindow()
-    if hwnd:
-        _WINDOWS[key] = hwnd
-    return hwnd
+    app = macos.front_app()
+    if app:
+        _WINDOWS[key] = app
+    return app
 
 
 def _activate(key):
-    """Bring a window we opened earlier back to the front. False if it is gone."""
-    hwnd = _WINDOWS.get(key)
-    if not hwnd or not ctypes.windll.user32.IsWindow(hwnd):
+    """Bring an app we opened earlier back to the front. False if it has quit."""
+    app = _WINDOWS.get(key)
+    if not app or not macos.app_running(app):
         _WINDOWS.pop(key, None)
         return False
-    ctypes.windll.user32.ShowWindow(hwnd, 9)
-    ctypes.windll.user32.SetForegroundWindow(hwnd)
+    macos.activate_app(app)
     time.sleep(0.5)
     return True
 
 
-def _navigate_current_tab(url):
-    """Ctrl+L, type the address, Enter — reuses the tab instead of adding one."""
-    _press(0x11, 0x4C)
-    time.sleep(0.35)
-    to_clipboard(url)
-    time.sleep(0.15)
-    _press(0x11, 0x56)
-    time.sleep(0.2)
-    _press(0x0D)
+def _show_web(url, match):
+    """Show a page in the working browser, reusing the tab already on that site.
+       The Windows version typed the address into whatever tab was in front,
+       which took over whatever he was reading. True when a tab was reused."""
+    app = CFG.get("browsers", {}).get(CFG.get("work_browser") or "chrome")
+    if app and _app_path(app):
+        reused = macos.show_in_browser_tab(app, url, match)
+        if reused is not None:
+            return reused
+    _open_web(url, new_window=True)
+    return False
 
 
 # ---- instant acknowledgement ----
@@ -991,7 +954,7 @@ _ack_lock = threading.Lock()
 
 def ack_out_loud():
     """Say something the moment a job starts, so he is never left in silence.
-       Uses the built-in Windows voice, which is instant and local."""
+       Uses the Mac's built-in voice, which is instant and local."""
     if not CFG.get("spoken_acknowledgement", True):
         return
     phrase = _ACKS[int(time.time()) % len(_ACKS)]
@@ -1000,12 +963,7 @@ def ack_out_loud():
         if not _ack_lock.acquire(blocking=False):
             return
         try:
-            subprocess.run(
-                ["powershell", "-NoProfile", "-Command",
-                 "Add-Type -AssemblyName System.Speech; "
-                 "$s = New-Object System.Speech.Synthesis.SpeechSynthesizer; "
-                 f"$s.Rate = 1; $s.Speak('{phrase}')"],
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), timeout=8)
+            macos.speak(phrase)
         except Exception:
             pass
         finally:
@@ -1018,44 +976,18 @@ def ack_out_loud():
 
 def monitors():
     """Every screen attached, left to right."""
-    rects = []
-
-    MonitorEnumProc = ctypes.WINFUNCTYPE(
-        ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong,
-        ctypes.POINTER(ctypes.c_long), ctypes.c_double)
-
-    def collect(hmon, hdc, lprect, data):
-        r = ctypes.cast(lprect, ctypes.POINTER(ctypes.c_long * 4)).contents
-        rects.append({"left": r[0], "top": r[1], "right": r[2], "bottom": r[3]})
-        return 1
-
-    ctypes.windll.user32.EnumDisplayMonitors(0, 0, MonitorEnumProc(collect), 0)
-    rects.sort(key=lambda r: r["left"])
-    return rects
+    return macos.displays()
 
 
 _MONITOR_NAMES = None
 
 
 def monitor_names():
-    """Real display names from Windows, so screens can be called what they are."""
+    """Hardware names of the plugged-in screens, so they can be called what they are."""
     global _MONITOR_NAMES
-    if _MONITOR_NAMES is not None:
-        return _MONITOR_NAMES
-
-    ps = ("Get-CimInstance -Namespace root\\wmi -ClassName WmiMonitorID | "
-          "ForEach-Object { ($_.UserFriendlyName | Where-Object {$_ -ne 0} | "
-          "ForEach-Object {[char]$_}) -join '' }")
-    try:
-        out = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
-                             capture_output=True, text=True, timeout=15,
-                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        names = [l.strip() for l in (out.stdout or "").splitlines() if l.strip()]
-    except Exception:
-        names = []
-
-    _MONITOR_NAMES = names
-    return names
+    if _MONITOR_NAMES is None:
+        _MONITOR_NAMES = macos.external_display_names()
+    return _MONITOR_NAMES
 
 
 def _position_word(index, total):
@@ -1079,8 +1011,16 @@ def screen_label(index):
         return nicknames[key]
 
     screens = monitors()
-    hardware = monitor_names()
-    name = hardware[index] if index < len(hardware) else None
+    if index < len(screens) and screens[index].get("builtin"):
+        name = "MacBook screen"
+        hardware = [name]
+    else:
+        # System Information lists external screens in its own order; this
+        # assumes it matches left to right, which a nickname in config overrides
+        hardware = monitor_names()
+        externals = [i for i, s in enumerate(screens) if not s.get("builtin")]
+        pos = externals.index(index) if index in externals else -1
+        name = hardware[pos] if 0 <= pos < len(hardware) else None
 
     if not name:
         return f"the {_position_word(index, len(screens))} screen".replace("the  ", "the ")
@@ -1135,59 +1075,21 @@ def resolve_screen(target):
     return None
 
 
-# Matches the PowerShell one-liner below: "C: Windows 123.4GB free of 456.7GB"
-_DRIVE_RE = re.compile(r"^(?P<device>\S+)\s+(?:(?P<label>.*?)\s+)?"
-                       r"(?P<free>[\d.]+)GB free of (?P<total>[\d.]+)GB$")
-
-
 def list_drives():
-    """Every drive attached, with space and label.
-
-       This used to shell out to PowerShell for a WMI query — Get-CimInstance
-       plus the PowerShell process itself together cost the better part of a
-       second, called fresh on every reconnect since build_system() reports
-       this in the system prompt. The same numbers are sitting right there in
-       the Win32 API, in-process, effectively free."""
-    kernel32 = ctypes.windll.kernel32
-    bitmask = kernel32.GetLogicalDrives()
-    lines = []
-    for i, letter in enumerate("ABCDEFGHIJKLMNOPQRSTUVWXYZ"):
-        if not (bitmask & (1 << i)):
-            continue
-        root = f"{letter}:\\"
-        # 2 = removable, 3 = fixed, 4 = network — skips empty optical drives
-        # and other drive types that would just add noise here.
-        if kernel32.GetDriveTypeW(root) not in (2, 3, 4):
-            continue
-        vol_name = ctypes.create_unicode_buffer(261)
-        ok = kernel32.GetVolumeInformationW(root, vol_name, 260, None, None, None, None, 0)
-        if not ok:
-            continue
-        free_bytes = ctypes.c_ulonglong(0)
-        total_bytes = ctypes.c_ulonglong(0)
-        if not kernel32.GetDiskFreeSpaceExW(root, ctypes.byref(free_bytes),
-                                            ctypes.byref(total_bytes), None):
-            continue
-        free_gb = free_bytes.value / (1024 ** 3)
-        total_gb = total_bytes.value / (1024 ** 3)
-        lines.append(f"{letter}: {vol_name.value} {free_gb:.1f}GB free of {total_gb:.1f}GB")
-    if not lines:
-        return "no drives found"
-
-    speech = "; ".join(lines)
-    rows = []
-    for line in lines:
-        m = _DRIVE_RE.match(line)
-        if m:
-            rows.append({"primary": f'{m.group("device")} {m.group("label") or "Local Disk"}'.strip(),
-                        "secondary": f'{m.group("free")} GB free of {m.group("total")} GB'})
-        else:
-            rows.append({"primary": line})
-    return Panel(speech, "list", title="Drives", items=rows)
+    """Every disk mounted, with free space."""
+    found = macos.volumes()
+    if not found:
+        return "no disks found"
+    gb = 1024 ** 3
+    speech = "; ".join(f"{name}: {free / gb:.1f} GB free of {total / gb:.1f} GB"
+                       for name, _path, free, total in found)
+    rows = [{"primary": name, "secondary": f"{free / gb:.1f} GB free of {total / gb:.1f} GB"}
+            for name, _path, free, total in found]
+    return Panel(speech, "list", title="Disks", items=rows)
 
 
 def copy_file(name, destination):
-    """Copy a file somewhere — a drive letter, a folder, or a configured nickname."""
+    """Copy a file somewhere — a disk by name, a folder, or a configured nickname."""
     hits = find_file(name)
     if not hits:
         return f"nothing found matching {name}"
@@ -1197,8 +1099,12 @@ def copy_file(name, destination):
     target = places.get(destination.lower(), destination)
     target = expand(target)
 
-    if len(target) <= 3 and target[1:2] == ":":
-        target = target if target.endswith("\\") else target + "\\"
+    # a disk by name: "copy it to the USB stick" finds /Volumes/USB STICK
+    if not os.path.isdir(target):
+        for vol_name, vol_path, _free, _total in macos.volumes():
+            if destination.lower() in vol_name.lower():
+                target = vol_path
+                break
     if not os.path.isdir(target):
         return f"{destination} is not a folder I can reach"
 
@@ -1227,26 +1133,27 @@ def _work_screen():
     return screens[min(max(idx, 0), len(screens) - 1)]
 
 
+def _main_screen(screens):
+    """The screen with the menu bar — the one whose top-left corner is (0, 0)."""
+    return next((s for s in screens if s["left"] == 0 and s["top"] == 0),
+                screens[0] if screens else None)
+
+
+def _fill(screen):
+    """Resize the front window to fill a screen, below the menu bar."""
+    top = screen["top"] + 25
+    return macos.set_front_window(screen["left"], top, screen["right"] - screen["left"],
+                                  screen["bottom"] - top)
+
+
 def place_active_window(maximise=True):
     """Move whatever just opened onto the working screen."""
     screen = _work_screen()
     if not screen:
         return "there is only one screen"
-
-    hwnd = ctypes.windll.user32.GetForegroundWindow()
-    if not hwnd:
-        return "nothing to move"
-
-    ctypes.windll.user32.ShowWindow(hwnd, 9)          # restore first
-    time.sleep(0.1)
-    ctypes.windll.user32.MoveWindow(
-        hwnd, screen["left"] + 40, screen["top"] + 40,
-        (screen["right"] - screen["left"]) - 80,
-        (screen["bottom"] - screen["top"]) - 80, True)
-    if maximise:
-        time.sleep(0.1)
-        ctypes.windll.user32.ShowWindow(hwnd, 3)      # maximise
-    return "moved it to your other screen"
+    if not macos.can_control():
+        return macos.NO_CONTROL
+    return "moved it to your other screen" if _fill(screen) else "that window would not move"
 
 
 def move_window(screen):
@@ -1254,51 +1161,38 @@ def move_window(screen):
     idx = resolve_screen(screen)
     if idx is None:
         return f"I do not know which screen {screen} is"
-    hwnd = ctypes.windll.user32.GetForegroundWindow()
-    r = screens[idx]
-    ctypes.windll.user32.ShowWindow(hwnd, 9)
-    time.sleep(0.1)
-    ctypes.windll.user32.MoveWindow(hwnd, r["left"] + 40, r["top"] + 40,
-                                    (r["right"] - r["left"]) - 80,
-                                    (r["bottom"] - r["top"]) - 80, True)
-    time.sleep(0.1)
-    ctypes.windll.user32.ShowWindow(hwnd, 3)
+    if not macos.can_control():
+        return macos.NO_CONTROL
+    if not _fill(screens[idx]):
+        return "that window would not move"
     return f"moved to {screen_label(idx)}"
 
 
 # ---- seeing the screen and pointing at things ----
 
-def _virtual_screen():
-    g = ctypes.windll.user32.GetSystemMetrics
-    return g(76), g(77), g(78), g(79)      # left, top, width, height
+_LAST_VIEW = None   # the rectangle the last look captured, in click coordinates
 
 
 def _grab_screen_png(only_work_screen=True):
-    """Capture the screen, scaled down. A full two-monitor grab is enormous and
-       burns through the daily quota in a handful of looks.
+    """Capture one screen, scaled down. A full Retina grab is enormous and
+       burns through the daily quota in a handful of looks. JPEG, because for
+       a screenshot it is a fraction of PNG's size and uploads that much faster.
 
-       Captured in-process with Pillow rather than shelling out to a fresh
-       PowerShell interpreter for every single look — that used to cost
-       upward of three seconds of pure process-startup overhead before a
-       single pixel was captured, on a call this is on the hot path for
-       (click_on, describe_screen, the Gmail screen fallback, ...).
-       ImageGrab.grab() does the same capture in-process in well under a
-       fifth of a second."""
-    path = os.path.join(os.environ.get("TEMP", "."), "david_view.png")
-    max_width = int(CFG.get("vision_max_width", 1000))
+       Remembers the rectangle it captured: click_on must map the model's
+       point back onto that same rectangle. The Windows version mapped it
+       across every screen at once, so on two screens clicks landed wrong."""
+    global _LAST_VIEW
+    path = os.path.join(tempfile.gettempdir(), "david_view.jpg")
 
     # by default only look at the screen he actually works on
-    bbox = None
-    if only_work_screen and CFG.get("vision_work_screen_only", True):
-        screen = _work_screen()
-        if screen:
-            bbox = (screen["left"], screen["top"], screen["right"], screen["bottom"])
-
-    img = ImageGrab.grab(bbox=bbox, all_screens=True)
-    if img.width > max_width:
-        scale = max_width / img.width
-        img = img.resize((int(img.width * scale), int(img.height * scale)), Image.Resampling.LANCZOS)
-    img.save(path)
+    screen = _work_screen() if only_work_screen and CFG.get("vision_work_screen_only", True) else None
+    screen = screen or _main_screen(monitors())
+    if not screen:
+        return None
+    box = (screen["left"], screen["top"], screen["right"], screen["bottom"])
+    if not macos.capture(path, box, CFG.get("vision_max_width", 1000), fmt="jpg"):
+        return None
+    _LAST_VIEW = box
     return path
 
 
@@ -1326,6 +1220,8 @@ def _look(question, want_point=False):
         when = f"{secs} seconds" if secs < 90 else f"{secs // 60} minutes"
         return None, (f"I cannot read the screen just yet — rate limited for another {when}")
 
+    if not macos.can_see_screen():
+        return None, macos.NO_SCREEN
     path = _grab_screen_png()
     if not path:
         return None, "I could not capture the screen"
@@ -1426,7 +1322,7 @@ def _look_groq(question, img_b64, want_point):
         "reasoning_effort": "none",
         "messages": [{"role": "user", "content": [
             {"type": "text", "text": question},
-            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_b64}"}},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
         ]}],
     }
     if want_point:
@@ -1452,22 +1348,44 @@ def _look_groq(question, img_b64, want_point):
         return None, "groq sent something unreadable"
 
 
+def _thinking(level):
+    """Gemini 3 thinks at medium unless told otherwise, and those thinking tokens
+       come out of maxOutputTokens — so a short reply could be slow, or cut off
+       before it started. Low is plenty for reading a screen or a search."""
+    return {"thinkingConfig": {"thinkingLevel": level}} if level else {}
+
+
+def _gemini_post(body, model=None, timeout=90):
+    """One generateContent call. The key goes in a header rather than the URL,
+       so it can never turn up in a logged error or a proxy's access log."""
+    model = model or CFG.get("model") or "gemini-3.6-flash"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    headers = {"x-goog-api-key": CFG["api_key"]}
+    res = requests.post(url, headers=headers, json=body, timeout=timeout)
+
+    config = body.get("generationConfig", {})
+    if res.status_code == 400 and "thinkingConfig" in config and "thinking" in res.text.lower():
+        # a model that doesn't take thinking levels — ask again without one
+        log(f"{model} refused a thinking level, asking again without it")
+        config = {k: v for k, v in config.items() if k != "thinkingConfig"}
+        res = requests.post(url, headers=headers, json={**body, "generationConfig": config},
+                            timeout=timeout)
+    return res
+
+
 def _look_gemini(question, img_b64, want_point):
     body = {
         "contents": [{"role": "user", "parts": [
-            {"inline_data": {"mime_type": "image/png", "data": img_b64}},
+            {"inline_data": {"mime_type": "image/jpeg", "data": img_b64}},
             {"text": question},
         ]}],
         "generationConfig": {"maxOutputTokens": 500,
+                             **_thinking(CFG.get("vision_thinking", "low")),
                              **({"responseMimeType": "application/json"} if want_point else {})},
     }
 
-    model = CFG.get("vision_model") or CFG.get("model") or "gemini-3.6-flash"
-    url = (f"https://generativelanguage.googleapis.com/v1beta/models/{model}"
-           f":generateContent?key={urllib.parse.quote(CFG['api_key'])}")
-
     try:
-        res = requests.post(url, json=body, timeout=60)
+        res = _gemini_post(body, CFG.get("vision_model"), timeout=60)
     except requests.RequestException as e:
         return None, f"gemini unreachable: {e}"
 
@@ -1489,8 +1407,19 @@ def describe_screen(question="What is on this screen? Answer in two spoken sente
     return err or text
 
 
+def _point_on_screen(point, box):
+    """The model answers [y, x], each 0 to 1000 across the image it was shown.
+       Turn that into a click position on the rectangle the image came from."""
+    y, x = point[:2]
+    left, top, right, bottom = box
+    return (int(left + float(x) / 1000 * (right - left)),
+            int(top + float(y) / 1000 * (bottom - top)))
+
+
 def click_on(description, double=False):
     """Look at the screen, find what he described, and click it."""
+    if not macos.can_control():
+        return macos.NO_CONTROL
     raw, err = _look(f"Find this on the screen: {description}.", want_point=True)
     if err:
         return err
@@ -1503,40 +1432,28 @@ def click_on(description, double=False):
     if not found.get("found") or not found.get("point"):
         return f"I cannot see {description} on the screen"
 
-    y, x = found["point"][:2]
-    left, top, width, height = _virtual_screen()
-    px = int(left + (x / 1000) * width)
-    py = int(top + (y / 1000) * height)
-
-    ctypes.windll.user32.SetCursorPos(px, py)
-    time.sleep(0.12)
-    ctypes.windll.user32.mouse_event(2, 0, 0, 0, 0)   # left down
-    ctypes.windll.user32.mouse_event(4, 0, 0, 0, 0)   # left up
-    if double:
-        time.sleep(0.08)
-        ctypes.windll.user32.mouse_event(2, 0, 0, 0, 0)
-        ctypes.windll.user32.mouse_event(4, 0, 0, 0, 0)
-
+    px, py = _point_on_screen(found["point"], _LAST_VIEW)
+    macos.click(px, py, double=bool(double))
     return f"clicked {description}"
 
 
 def scroll(direction="down", amount=5):
-    clicks = int(amount) * (-120 if str(direction).lower() == "down" else 120)
+    if not macos.can_control():
+        return macos.NO_CONTROL
+    step = -3 if str(direction).lower() == "down" else 3
     for _ in range(abs(int(amount))):
-        ctypes.windll.user32.mouse_event(0x0800, 0, 0, -120 if clicks < 0 else 120, 0)
+        macos.scroll_lines(step)
         time.sleep(0.05)
     return f"scrolled {direction}"
 
 
 def press_key(key):
-    codes = {"enter": 0x0D, "escape": 0x1B, "esc": 0x1B, "tab": 0x09, "space": 0x20,
-             "backspace": 0x08, "delete": 0x2E, "up": 0x26, "down": 0x28,
-             "left": 0x25, "right": 0x27, "home": 0x24, "end": 0x23,
-             "f5": 0x74, "f11": 0x7A}
-    code = codes.get(str(key).lower())
-    if not code:
+    key = str(key).lower().strip()
+    if not macos.has_key(key):
         return f"I do not know the {key} key"
-    _press(code)
+    if not macos.can_control():
+        return macos.NO_CONTROL
+    macos.press(key)
     return f"pressed {key}"
 
 
@@ -1559,76 +1476,79 @@ def show_image(query):
     return f"showing {query} on your other screen — {result}"
 
 
+def _front_screen():
+    """The screen to size windows against — the working screen when there is one."""
+    return _work_screen() or _main_screen(monitors())
+
+
 def maximise_window():
-    _press(0x5B, 0x26)          # win + up
-    return "maximised"
+    if not macos.can_control():
+        return macos.NO_CONTROL
+    return "maximised" if _fill(_front_screen()) else "that window would not resize"
 
 
 def minimise_window():
-    _press(0x5B, 0x28)          # win + down
+    if not macos.can_control():
+        return macos.NO_CONTROL
+    macos.press("m", "cmd")
     return "minimised"
 
 
 def snap_window(side):
-    key = {"left": 0x25, "right": 0x27}.get(side.lower(), 0x25)
-    _press(0x5B, key)
+    if not macos.can_control():
+        return macos.NO_CONTROL
+    s = _front_screen()
+    top = s["top"] + 25
+    half = (s["right"] - s["left"]) // 2
+    left = s["left"] + (half if str(side).lower() == "right" else 0)
+    if not macos.set_front_window(left, top, half, s["bottom"] - top):
+        return "that window would not move"
     return f"snapped to the {side}"
 
 
 def minimise_all():
-    # Win+M is the non-toggling "minimise everything" shortcut (Win+D would
-    # do the same thing the first time but then *restore* everything on a
-    # second call, since it toggles) — no need to pay for a PowerShell
-    # process and a COM object just to press a key combo that already does
-    # exactly this.
-    _press(0x5B, 0x4D)
-    return "minimised everything"
+    return "hid everything" if macos.hide_all_apps() else "I could not hide the windows"
 
 
 def close_window():
-    _press(0x12, 0x73)          # alt + f4
+    if not macos.can_control():
+        return macos.NO_CONTROL
+    macos.press("w", "cmd")
     return "closed it"
 
 
 def switch_window():
-    _press(0x12, 0x09)          # alt + tab
+    if not macos.can_control():
+        return macos.NO_CONTROL
+    macos.press("tab", "cmd")
     return "switched"
 
 
 def close_app(name):
-    exe = name if name.lower().endswith(".exe") else name + ".exe"
-    out = subprocess.run(["taskkill", "/IM", exe, "/F"], capture_output=True, text=True,
-                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    return f"closed {name}" if out.returncode == 0 else f"{name} was not running"
+    path = CFG.get("apps", {}).get(name.lower(), "")
+    if not path or "://" in path:
+        path = find_installed(name) or name
+    app = macos.app_name(path)
+    if not macos.app_running(app):
+        return f"{app} was not running"
+    return f"closed {app}" if macos.quit_app(app) else f"{app} would not quit"
 
 
 # ---- media ----
 
 def media(command):
-    key = {"play": 0xB3, "pause": 0xB3, "next": 0xB0, "previous": 0xB1, "back": 0xB1}.get(command, 0xB3)
-    _press(key)
-    return "done"
+    app = macos.media_control(str(command).lower())
+    return f"done, in {app}" if app else "neither Spotify nor Music is open"
 
 
 # ---- system ----
 
-class _FileTime(ctypes.Structure):
-    _fields_ = [("low", ctypes.c_ulong), ("high", ctypes.c_ulong)]
-
-
-def _cpu_times():
-    idle, kern, user = _FileTime(), _FileTime(), _FileTime()
-    ctypes.windll.kernel32.GetSystemTimes(ctypes.byref(idle), ctypes.byref(kern), ctypes.byref(user))
-    to_i = lambda ft: (ft.high << 32) | ft.low
-    return to_i(idle), to_i(kern) + to_i(user)
-
-
-_LAST_CPU = _cpu_times()
+_LAST_CPU = macos.cpu_ticks()
 
 
 def cpu_percent():
     global _LAST_CPU
-    idle, total = _cpu_times()
+    idle, total = macos.cpu_ticks()
     d_idle, d_total = idle - _LAST_CPU[0], total - _LAST_CPU[1]
     _LAST_CPU = (idle, total)
     if d_total <= 0:
@@ -1637,48 +1557,25 @@ def cpu_percent():
 
 
 def ram_percent():
-    class Mem(ctypes.Structure):
-        _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong),
-                    ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
-                    ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),
-                    ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong),
-                    ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
-    m = Mem()
-    m.dwLength = ctypes.sizeof(Mem)
-    ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m))
-    return m.dwMemoryLoad
+    return macos.ram_percent()
 
 
 def disk_percent():
-    free, total = ctypes.c_ulonglong(), ctypes.c_ulonglong()
-    ctypes.windll.kernel32.GetDiskFreeSpaceExW(
-        ctypes.c_wchar_p("C:\\"), None, ctypes.byref(total), ctypes.byref(free))
-    if not total.value:
-        return 0
-    return (1 - free.value / total.value) * 100
+    return macos.disk_percent()
 
 
 def battery_percent():
-    class Status(ctypes.Structure):
-        _fields_ = [("ACLineStatus", ctypes.c_byte), ("BatteryFlag", ctypes.c_byte),
-                    ("BatteryLifePercent", ctypes.c_byte), ("Reserved1", ctypes.c_byte),
-                    ("BatteryLifeTime", ctypes.c_ulong), ("BatteryFullLifeTime", ctypes.c_ulong)]
-    st = Status()
-    ctypes.windll.kernel32.GetSystemPowerStatus(ctypes.byref(st))
-    return min(100, st.BatteryLifePercent)
+    percent, _plugged = macos.battery_status()
+    return percent or 0
 
 
 def battery():
-    class Status(ctypes.Structure):
-        _fields_ = [("ACLineStatus", ctypes.c_byte), ("BatteryFlag", ctypes.c_byte),
-                    ("BatteryLifePercent", ctypes.c_byte), ("Reserved1", ctypes.c_byte),
-                    ("BatteryLifeTime", ctypes.c_ulong), ("BatteryFullLifeTime", ctypes.c_ulong)]
-    st = Status()
-    ctypes.windll.kernel32.GetSystemPowerStatus(ctypes.byref(st))
-    plugged = "plugged in" if st.ACLineStatus == 1 else "on battery"
-    speech = f"{st.BatteryLifePercent} percent, {plugged}"
-    return Panel(speech, "system", value=f"{st.BatteryLifePercent}%", label="Battery",
-                 detail=plugged.capitalize())
+    percent, plugged = macos.battery_status(max_age=0)
+    if percent is None:
+        return "this Mac has no battery"
+    state = "plugged in" if plugged else "on battery"
+    return Panel(f"{percent} percent, {state}", "system", value=f"{percent}%", label="Battery",
+                 detail=state.capitalize())
 
 
 def what_time():
@@ -1689,25 +1586,21 @@ def what_time():
 
 
 def sleep_pc():
-    subprocess.run(["rundll32.exe", "powrprof.dll,SetSuspendState", "0,1,0"])
-    return "sleeping"
+    return "sleeping" if macos.sleep_now() else "the Mac would not go to sleep"
 
 
 def shutdown(when_seconds=30):
-    subprocess.run(["shutdown", "/s", "/t", str(when_seconds)],
-                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    macos.schedule_power("shut down", when_seconds)
     return f"shutting down in {when_seconds} seconds — say cancel shutdown to stop it"
 
 
 def restart(when_seconds=30):
-    subprocess.run(["shutdown", "/r", "/t", str(when_seconds)],
-                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    return f"restarting in {when_seconds} seconds"
+    macos.schedule_power("restart", when_seconds)
+    return f"restarting in {when_seconds} seconds — say cancel shutdown to stop it"
 
 
 def cancel_shutdown():
-    subprocess.run(["shutdown", "/a"], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    return "cancelled"
+    return "cancelled" if macos.cancel_power() else "nothing was scheduled"
 
 
 # ---- notes, files, trading ----
@@ -1750,7 +1643,7 @@ def notion_status():
     if not _HAVE_OAUTH_NOTION:
         return "Notion is not set up on this machine."
     if oauth_notion.is_connected():
-        return f"connected, to {oauth_notion.status().get('page_title', 'his journal page')}"
+        return f"connected, to {oauth_notion.status().get('page_title', 'the journal page')}"
     return "not connected"
 
 
@@ -1923,7 +1816,7 @@ _RESEARCH_CACHE_TTL = 300  # seconds
 
 
 def _research_cache_key(topic, criteria):
-    return re.sub(r"\\s+", " ", f"{topic}|{criteria}".strip().lower())
+    return re.sub(r"\s+", " ", f"{topic}|{criteria}".strip().lower())
 
 
 def _get_cached_research(topic, criteria):
@@ -2025,8 +1918,8 @@ def _news_groq(topic, focus=""):
         return None
 
     if focus:
-        ask = (f"He wants more on this story from the news on {topic}: {focus}. Use live web search "
-               "and give him the full story: what happened, who is involved, why it matters. "
+        ask = (f"They want more on this story from the news on {topic}: {focus}. Use live web search "
+               "and give them the full story: what happened, who is involved, why it matters. "
                "4-6 spoken sentences, no markdown, no links.")
     else:
         ask = (f"Check the news on: {topic}. Use live web search and come back with the three or four "
@@ -2121,21 +2014,23 @@ def _research_fallback_panel(fallback, default):
     return Panel(fallback, "text", title="Research") if fallback else default
 
 
+def _owner():
+    """Who David works for, and where, for prompts that search on their behalf."""
+    name = CFG.get("owner_name") or "the user"
+    where = CFG.get("home_location") or _guess_location()
+    return f"{name}, who is in {where}" if where else name
+
+
 def research(topic, criteria="", open_links=False):
     """Search the web, compare what is out there, and come back with one
        recommendation — not a list of links to read himself. Stays off his
        screen unless he explicitly asks to see the sources."""
-    key = CFG["api_key"]
-    model = CFG.get("model") or "gemini-3.6-flash"
-    url = (f"https://generativelanguage.googleapis.com/v1beta/models/{model}"
-           f":generateContent?key={urllib.parse.quote(key)}")
-
     ask = (
-        f"Research this for Ibans, who is in Nigeria: {topic}."
-        + (f" What matters to him: {criteria}." if criteria else "")
+        f"Research this for {_owner()}: {topic}."
+        + (f" What matters to them: {criteria}." if criteria else "")
         + " Search the web, compare the real options available now, and come back with ONE"
           " clear recommendation and a runner-up. Say what each costs where you can find it,"
-          " and why the winner beats the rest on what he actually asked for."
+          " and why the winner beats the rest on what they actually asked for."
           " This will be read aloud, so write four or five spoken sentences, no lists,"
           " no markdown, no links in the text. Lead with the recommendation."
           " Before that spoken answer, on its own line, write exactly:"
@@ -2146,11 +2041,11 @@ def research(topic, criteria="", open_links=False):
     body = {
         "contents": [{"role": "user", "parts": [{"text": ask}]}],
         "tools": [{"google_search": {}}],
-        "generationConfig": {"maxOutputTokens": 900},
+        "generationConfig": {"maxOutputTokens": 900, **_thinking(CFG.get("search_thinking", "low"))},
     }
 
     try:
-        res = requests.post(url, json=body, timeout=90)
+        res = _gemini_post(body, timeout=90)
     except requests.RequestException as e:
         return _research_fallback_panel(_research_groq(topic, criteria),
                                         f"I could not get online to research that: {e}")
@@ -2196,36 +2091,31 @@ def news(topic, focus="", open_links=False):
        asks to see it. Call again with `focus` set to the story he picked
        once he has heard the headlines, for a fuller spoken summary of just
        that one."""
-    key = CFG["api_key"]
-    model = CFG.get("model") or "gemini-3.6-flash"
-    url = (f"https://generativelanguage.googleapis.com/v1beta/models/{model}"
-           f":generateContent?key={urllib.parse.quote(key)}")
-
     if focus:
         ask = (
-            f"He just heard some news headlines about {topic} and wants to hear more about this one: "
-            f"{focus}. Search the web for the full story and give him a real spoken summary — what "
+            f"They just heard some news headlines about {topic} and want to hear more about this one: "
+            f"{focus}. Search the web for the full story and give them a real spoken summary — what "
             "happened, who is involved, and why it matters. Five or six spoken sentences, no lists, "
             "no markdown, no links, and nothing that sounds like you are reading a webpage aloud."
         )
     else:
         ask = (
-            f"Check what is actually happening right now for Ibans, who is in Nigeria, on: {topic}. "
+            f"Check what is actually happening right now for {_owner()}, on: {topic}. "
             "Search the web and come back with the three or four most important, most recent things "
             "going on. For each, say what happened and who it involves in one short spoken sentence — "
             "do not just read a headline verbatim, and do not read out source names, dates or links as "
-            "citations. No lists, no markdown. End by asking, in your own words, whether he wants to "
+            "citations. No lists, no markdown. End by asking, in your own words, whether they want to "
             "hear more on any of them."
         )
 
     body = {
         "contents": [{"role": "user", "parts": [{"text": ask}]}],
         "tools": [{"google_search": {}}],
-        "generationConfig": {"maxOutputTokens": 700},
+        "generationConfig": {"maxOutputTokens": 700, **_thinking(CFG.get("search_thinking", "low"))},
     }
 
     try:
-        res = requests.post(url, json=body, timeout=90)
+        res = _gemini_post(body, timeout=90)
     except requests.RequestException as e:
         fallback = _news_groq(topic, focus)
         return fallback or f"I could not get online to check the news: {e}"
@@ -2263,14 +2153,15 @@ def open_chart(symbol):
 
 
 def empty_bin():
-    ctypes.windll.shell32.SHEmptyRecycleBinW(None, None, 1 | 2 | 4)
-    return "recycle bin emptied"
+    return "Trash emptied" if macos.empty_trash() else "the Trash would not empty"
 
 
 def set_timer(minutes, label="timer"):
     seconds = float(minutes) * 60
     TIMERS.append((label, time.time() + seconds))
-    threading.Timer(seconds, lambda: NOTIFY(f"The {label} you set for {minutes} minutes is up.")).start()
+    timer = threading.Timer(seconds, lambda: NOTIFY(f"The {label} you set for {minutes} minutes is up."))
+    timer.daemon = True     # a pending timer must not keep David alive after Ctrl+C
+    timer.start()
     return f"timer set for {minutes} minutes"
 
 
@@ -2344,6 +2235,13 @@ NEEDS_THE_SCREEN = {
     "place_active_window", "close_window", "switch_window", "minimise_all",
 }
 
+# small input actions that are meant to be repeated — "scroll down" twice is two scrolls
+REPEATABLE = {
+    "scroll", "press_key", "type_text", "click_on", "close_tab", "close_window",
+    "switch_window", "minimise_window", "maximise_window", "snap_window", "move_window",
+    "volume", "media",
+}
+
 DESTRUCTIVE = {"delete_file", "rename_file", "write_file", "lock", "copy_file", "forget",
                "send_email", "send_open_gmail",
                "close_app", "shutdown", "restart", "sleep_pc", "empty_bin"}
@@ -2358,10 +2256,12 @@ def _is_yes(text):
     """Same word list david.py has always used to confirm out loud — checked
        against what he actually said, not against whatever the model decided
        to call the tool with."""
-    t = (text or "").lower()
-    if any(w in t for w in _NO_WORDS):
+    # Whole words only: "go ahead now" is not a "no", and "yesterday" is not a "yes".
+    t = (text or "").lower().replace("’", "'")
+    padded = " " + " ".join(re.sub(r"[^a-z' ]", " ", t).split()) + " "
+    if any(f" {w} " in padded for w in _NO_WORDS):
         return False
-    return any(w in t for w in _YES_WORDS)
+    return any(f" {w} " in padded for w in _YES_WORDS)
 
 
 def _describe_destructive(name, args):
@@ -2378,7 +2278,7 @@ def _describe_destructive(name, args):
         "shutdown": lambda a: "shut down the computer",
         "restart": lambda a: "restart the computer",
         "sleep_pc": lambda a: "put the computer to sleep",
-        "empty_bin": lambda a: "empty the recycle bin",
+        "empty_bin": lambda a: "empty the Trash",
     }
     try:
         return phrasing.get(name, lambda a: name)(args)
@@ -2395,7 +2295,7 @@ def declarations():
          "parameters": {"type": "OBJECT", "properties": {"name": s("site name")}, "required": ["name"]}},
         {"name": "open_url", "description": "Open any web address.",
          "parameters": {"type": "OBJECT", "properties": {"url": s("the address")}, "required": ["url"]}},
-        {"name": "search_web", "description": "Open a Google search results page in the browser, on screen, for him to read himself. Only use this when he explicitly wants a browser pulled up — for checking the news, current events, or anything he wants read back to him, use news or research instead, which report by voice and never open a browser on their own.",
+        {"name": "search_web", "description": "Open a Google search results page in the browser, on screen, for them to read themselves. Only use this when they explicitly want a browser pulled up — for checking the news, current events, or anything they want read back to them, use news or research instead, which report by voice and never open a browser on their own.",
          "parameters": {"type": "OBJECT", "properties": {"query": s("what to search")}, "required": ["query"]}},
         {"name": "open_file", "description": "Open the closest matching file.",
          "parameters": {"type": "OBJECT", "properties": {"name": s("part of the filename")}, "required": ["name"]}},
@@ -2406,16 +2306,16 @@ def declarations():
         {"name": "volume", "description": "Change system volume.",
          "parameters": {"type": "OBJECT", "properties": {"direction": s("up, down or mute")}, "required": ["direction"]}},
         {"name": "lock", "description": "Lock the workstation.", "parameters": {"type": "OBJECT", "properties": {}}},
-        {"name": "delete_file", "description": "Move a file to a recovery folder. Confirm with him first.",
+        {"name": "delete_file", "description": "Move a file to a recovery folder. Confirm with them first.",
          "parameters": {"type": "OBJECT", "properties": {"name": s("part of the filename")}, "required": ["name"]}},
-        {"name": "rename_file", "description": "Rename a file. Confirm with him first.",
+        {"name": "rename_file", "description": "Rename a file. Confirm with them first.",
          "parameters": {"type": "OBJECT", "properties": {"name": s("current name"), "new_name": s("new name")},
                         "required": ["name", "new_name"]}},
-        {"name": "write_file", "description": "Write a text file to the desktop. Confirm with him first.",
+        {"name": "write_file", "description": "Write a text file to the desktop. Confirm with them first.",
          "parameters": {"type": "OBJECT", "properties": {"name": s("filename"), "content": s("contents")},
                         "required": ["name"]}},
 
-        {"name": "type_text", "description": "Type text into whatever window he is currently in. Use this when he dictates a message, an email or a paragraph.",
+        {"name": "type_text", "description": "Type text into whatever window they are currently in. Use this when they dictate a message, an email or a paragraph.",
          "parameters": {"type": "OBJECT", "properties": {"text": s("exactly what to type")}, "required": ["text"]}},
         {"name": "to_clipboard", "description": "Put text on the clipboard without typing it.",
          "parameters": {"type": "OBJECT", "properties": {"text": s("what to copy")}, "required": ["text"]}},
@@ -2424,47 +2324,47 @@ def declarations():
 
         {"name": "screenshot", "description": "Capture the screen and save it to the desktop.",
          "parameters": {"type": "OBJECT", "properties": {}}},
-        {"name": "get_weather", "description": "Current conditions and a short forecast for a place. Use this for any weather question — do not use research or news for weather. If he doesn't name a place, leave location blank — it falls back to his configured home location, or detects it automatically.",
-         "parameters": {"type": "OBJECT", "properties": {"location": s("city or place he asked about, blank if he did not say one")}}},
-        {"name": "research", "description": "Search the web, compare the real options, and come back with a recommendation. Use this whenever he asks what to buy, which is best, or wants options compared. It takes twenty seconds or so, so tell him you are on it before calling it. Reports by voice and never opens a browser on its own.",
-         "parameters": {"type": "OBJECT", "properties": {"topic": s("what he wants researched"),
-                                                        "criteria": s("what matters to him: budget, use, preferences"),
+        {"name": "get_weather", "description": "Current conditions and a short forecast for a place. Use this for any weather question — do not use research or news for weather. If they don't name a place, leave location blank — it falls back to their configured home location, or detects it automatically.",
+         "parameters": {"type": "OBJECT", "properties": {"location": s("city or place they asked about, blank if they did not say one")}}},
+        {"name": "research", "description": "Search the web, compare the real options, and come back with a recommendation. Use this whenever they ask what to buy, which is best, or want options compared. It takes twenty seconds or so, so tell them you are on it before calling it. Reports by voice and never opens a browser on its own.",
+         "parameters": {"type": "OBJECT", "properties": {"topic": s("what they want researched"),
+                                                        "criteria": s("what matters to them: budget, use, preferences"),
                                                         "open_links": {"type": "BOOLEAN",
-                                                            "description": "true only if he explicitly asked to see, pull up, or open the sources — otherwise leave it out"}},
+                                                            "description": "true only if they explicitly asked to see, pull up, or open the sources — otherwise leave it out"}},
                         "required": ["topic"]}},
-        {"name": "news", "description": "Check the news on a topic — finance, Nigerian politics, sports, anything current — and read back what is actually happening. Use whenever he asks to check the news, catch up, or what is going on with something; do not use search_web or research for this. Reports a short list of headlines by voice and never opens a browser on its own. Once he has heard the headlines and picks one, call this again with `focus` set to that story for a fuller spoken summary of just it.",
+        {"name": "news", "description": "Check the news on a topic — finance, politics, sports, anything current — and read back what is actually happening. Use whenever they ask to check the news, catch up, or what is going on with something; do not use search_web or research for this. Reports a short list of headlines by voice and never opens a browser on its own. Once they have heard the headlines and pick one, call this again with `focus` set to that story for a fuller spoken summary of just it.",
          "parameters": {"type": "OBJECT", "properties": {
              "topic": s("what news to check on"),
-             "focus": s("optional — the specific headline or story he wants to hear more about, once he has picked one from a list you already read him"),
+             "focus": s("optional — the specific headline or story they want to hear more about, once they have picked one from a list you already read them"),
              "open_links": {"type": "BOOLEAN",
-                 "description": "true only if he explicitly asked to see, pull up, or open the source — otherwise leave it out"}},
+                 "description": "true only if they explicitly asked to see, pull up, or open the source — otherwise leave it out"}},
                         "required": ["topic"]}},
 
-        {"name": "show_image", "description": "Show him a picture of something. Opens image results on his other screen and opens the best photo large.",
+        {"name": "show_image", "description": "Show them a picture of something. Opens image results on the other screen and opens the best photo large.",
          "parameters": {"type": "OBJECT", "properties": {"query": s("what to show a picture of")}, "required": ["query"]}},
         {"name": "list_monitors", "description": "How many screens are attached and how big they are.",
          "parameters": {"type": "OBJECT", "properties": {}}},
         {"name": "move_window", "description": "Move the current window to a named or numbered screen.",
          "parameters": {"type": "OBJECT", "properties": {"screen": s("a screen name, nickname, or number")},
                         "required": ["screen"]}},
-        {"name": "remember", "description": "Save something he has told you, so you still know it in future sessions. Use this whenever he says remember this, from now on, always, never, or tells you how he wants things done.",
+        {"name": "remember", "description": "Save something they have told you, so you still know it in future sessions. Use this whenever they say remember this, from now on, always, never, or tell you how they want things done.",
          "parameters": {"type": "OBJECT", "properties": {
              "fact": s("the thing to remember, written as a plain statement"),
              "category": s("a rough grouping: preferences, trading, work, people, screens")},
                         "required": ["fact"]}},
-        {"name": "recall", "description": "Say what he has told you to remember, optionally about one thing.",
+        {"name": "recall", "description": "Say what they have told you to remember, optionally about one thing.",
          "parameters": {"type": "OBJECT", "properties": {"about": s("topic to filter by, optional")}}},
-        {"name": "forget", "description": "Drop something from memory. Confirm with him first.",
+        {"name": "forget", "description": "Drop something from memory. Confirm with them first.",
          "parameters": {"type": "OBJECT", "properties": {"about": s("what to forget")}, "required": ["about"]}},
 
-        {"name": "open_dashboard", "description": "Open the settings dashboard where he can connect tools or change the display mode.",
+        {"name": "open_dashboard", "description": "Open the settings dashboard where they can connect tools or change the display mode.",
          "parameters": {"type": "OBJECT", "properties": {}}},
-        {"name": "connect_gmail", "description": "Sign in to Gmail properly, so email works without reading the screen. Use when he asks to connect, set up, or link his email.",
+        {"name": "connect_gmail", "description": "Sign in to Gmail properly, so email works without reading the screen. Use when they ask to connect, set up, or link their email.",
          "parameters": {"type": "OBJECT", "properties": {}}},
         {"name": "disconnect_gmail", "description": "Sign out of Gmail.",
          "parameters": {"type": "OBJECT", "properties": {}}},
 
-        {"name": "check_email", "description": "Look through his inbox. Can filter by sender, subject, how far back, and unread only. Reports who sent what without reading bodies aloud.",
+        {"name": "check_email", "description": "Look through their inbox. Can filter by sender, subject, how far back, and unread only. Reports who sent what without reading bodies aloud.",
          "parameters": {"type": "OBJECT", "properties": {
              "sender": s("name or address to filter by, optional"),
              "subject": s("words in the subject, optional"),
@@ -2472,40 +2372,40 @@ def declarations():
              "unread_only": {"type": "BOOLEAN", "description": "only unread"}}}},
         {"name": "read_email", "description": "Read out the full text of one message from the last check, by its number. Offer before doing this rather than reading unprompted.",
          "parameters": {"type": "OBJECT", "properties": {"which": {"type": "NUMBER", "description": "1 is the newest"}}}},
-        {"name": "send_email", "description": "Send an email from his account. Always read the whole thing back and get a yes before sending.",
+        {"name": "send_email", "description": "Send an email from their account. Always read the whole thing back and get a yes before sending.",
          "parameters": {"type": "OBJECT", "properties": {"to": s("address"), "subject": s("subject"), "body": s("the message")},
                         "required": ["to", "subject", "body"]}},
         {"name": "check_chat", "description": "Open a messaging app and read the conversation with someone off the screen. Use for WhatsApp, Telegram and anything without an API.",
          "parameters": {"type": "OBJECT", "properties": {
              "person": s("who the conversation is with"),
-             "question": s("what he wants to know, optional"),
+             "question": s("what they want to know, optional"),
              "app": s("whatsapp, telegram or similar, default whatsapp")},
                         "required": ["person"]}},
 
-        {"name": "check_gmail", "description": "Open Gmail in the browser and read the results off the screen. check_email already does this; use that unless he asks for Gmail by name.",
+        {"name": "check_gmail", "description": "Open Gmail in the browser and read the results off the screen. check_email already does this; use that unless they ask for Gmail by name.",
          "parameters": {"type": "OBJECT", "properties": {
              "sender": s("who from, optional"), "subject": s("subject words, optional"),
              "hours": {"type": "NUMBER", "description": "how far back, default 24"},
              "unread_only": {"type": "BOOLEAN", "description": "unread only"},
-             "question": s("what he wants to know, optional")}}},
+             "question": s("what they want to know, optional")}}},
         {"name": "open_gmail_message", "description": "Open one of the emails showing on screen and read it out.",
          "parameters": {"type": "OBJECT", "properties": {"which": {"type": "NUMBER", "description": "1 is the top one"}}}},
 
         {"name": "reply_in_gmail", "description": "Reply to the email currently open on screen. Types the reply but does not send it.",
          "parameters": {"type": "OBJECT", "properties": {"text": s("the reply, in full")}, "required": ["text"]}},
-        {"name": "send_open_gmail", "description": "Send the reply that is typed and waiting. Only after he says to.",
+        {"name": "send_open_gmail", "description": "Send the reply that is typed and waiting. Only after they say to.",
          "parameters": {"type": "OBJECT", "properties": {}}},
 
-        {"name": "list_drives", "description": "Every drive attached, with free space.",
+        {"name": "list_drives", "description": "Every disk mounted, with free space.",
          "parameters": {"type": "OBJECT", "properties": {}}},
-        {"name": "copy_file", "description": "Copy a file to a drive, folder or saved place. Confirm with him first.",
+        {"name": "copy_file", "description": "Copy a file to a disk, folder or saved place. Confirm with them first.",
          "parameters": {"type": "OBJECT", "properties": {"name": s("part of the filename"),
-                                                        "destination": s("drive letter, folder path or saved place name")},
+                                                        "destination": s("disk name, folder path or saved place name")},
                         "required": ["name", "destination"]}},
         {"name": "place_active_window", "description": "Move whatever is in front onto the working screen, away from the interface.",
          "parameters": {"type": "OBJECT", "properties": {}}},
 
-        {"name": "describe_screen", "description": "Look at what is currently on his screen and describe it, or answer a question about it. Use this whenever he refers to something he can see.",
+        {"name": "describe_screen", "description": "Look at what is currently on the screen and describe it, or answer a question about it. Use this whenever they refer to something they can see.",
          "parameters": {"type": "OBJECT", "properties": {"question": s("what to look for, optional")}}},
         {"name": "click_on", "description": "Look at the screen and click on something described in plain words, like the third image, the search box, or the download button.",
          "parameters": {"type": "OBJECT", "properties": {"description": s("what to click"),
@@ -2524,14 +2424,14 @@ def declarations():
         {"name": "snap_window", "description": "Snap the current window to one half of the screen.",
          "parameters": {"type": "OBJECT", "properties": {"side": s("left or right")}, "required": ["side"]}},
 
-        {"name": "minimise_all", "description": "Minimise every window and show the desktop.",
+        {"name": "minimise_all", "description": "Hide every app and show the desktop.",
          "parameters": {"type": "OBJECT", "properties": {}}},
-        {"name": "close_window", "description": "Close the window he is looking at.",
+        {"name": "close_window", "description": "Close the window they are looking at.",
          "parameters": {"type": "OBJECT", "properties": {}}},
         {"name": "switch_window", "description": "Switch to the previous window.",
          "parameters": {"type": "OBJECT", "properties": {}}},
-        {"name": "close_app", "description": "Force an app to quit by name, like chrome or notepad.",
-         "parameters": {"type": "OBJECT", "properties": {"name": s("app or exe name")}, "required": ["name"]}},
+        {"name": "close_app", "description": "Quit an app by name, like chrome or notes.",
+         "parameters": {"type": "OBJECT", "properties": {"name": s("app name")}, "required": ["name"]}},
 
         {"name": "media", "description": "Control whatever is playing.",
          "parameters": {"type": "OBJECT", "properties": {"command": s("play, pause, next or previous")},
@@ -2541,7 +2441,7 @@ def declarations():
          "parameters": {"type": "OBJECT", "properties": {}}},
         {"name": "what_time", "description": "The current time and date.",
          "parameters": {"type": "OBJECT", "properties": {}}},
-        {"name": "sleep_pc", "description": "Put the laptop to sleep. Confirm first.",
+        {"name": "sleep_pc", "description": "Put the Mac to sleep. Confirm first.",
          "parameters": {"type": "OBJECT", "properties": {}}},
         {"name": "shutdown", "description": "Shut down after a delay. Confirm first.",
          "parameters": {"type": "OBJECT", "properties": {"when_seconds": {"type": "NUMBER", "description": "delay, default 30"}}}},
@@ -2550,17 +2450,17 @@ def declarations():
         {"name": "cancel_shutdown", "description": "Cancel a pending shutdown or restart.",
          "parameters": {"type": "OBJECT", "properties": {}}},
 
-        {"name": "add_note", "description": "Append a line to his notes file on the desktop.",
+        {"name": "add_note", "description": "Append a line to their notes file on the desktop.",
          "parameters": {"type": "OBJECT", "properties": {"text": s("the note")}, "required": ["text"]}},
-        {"name": "read_notes", "description": "Read back his most recent notes.",
+        {"name": "read_notes", "description": "Read back their most recent notes.",
          "parameters": {"type": "OBJECT", "properties": {"count": {"type": "NUMBER", "description": "how many, default 5"}}}},
         {"name": "recent_downloads", "description": "Name the most recently downloaded files.",
          "parameters": {"type": "OBJECT", "properties": {"count": {"type": "NUMBER", "description": "how many, default 5"}}}},
-        {"name": "notion_status", "description": "Check right now, for real, whether Notion is connected. Instant, no network call. Call this whenever journaling or a Notion table comes up in conversation, before doing or saying anything else about it — the connection state in your instructions is only a snapshot from when this conversation started and goes stale the moment he connects or disconnects it from the dashboard.",
+        {"name": "notion_status", "description": "Check right now, for real, whether Notion is connected. Instant, no network call. Call this whenever journaling or a Notion table comes up in conversation, before doing or saying anything else about it — the connection state in your instructions is only a snapshot from when this conversation started and goes stale the moment they connect or disconnect it from the dashboard.",
          "parameters": {"type": "OBJECT", "properties": {}}},
-        {"name": "journal", "description": "Write a journal entry to his connected Notion page. Use whenever he asks you to journal something, write it in his journal, or log a thought or reflection there. If Notion is not connected it tells you so — say that to him plainly and suggest he connect it from the dashboard.",
+        {"name": "journal", "description": "Write a journal entry to their connected Notion page. Use whenever they ask you to journal something, write it in their journal, or log a thought or reflection there. If Notion is not connected it tells you so — say that to them plainly and suggest they connect it from the dashboard.",
          "parameters": {"type": "OBJECT", "properties": {"entry": s("what to write, tidied into a clear sentence or two")}, "required": ["entry"]}},
-        {"name": "notion_table", "description": "Add a real table to his connected Notion page. Use whenever he asks for a table, a tracker, a log, or a grid of rows and columns in Notion. Build the rows yourself from what he tells you — do not ask him to dictate pipe characters or formatting out loud. If Notion is not connected it tells you so — say that plainly and suggest he connect it from the dashboard.",
+        {"name": "notion_table", "description": "Add a real table to their connected Notion page. Use whenever they ask for a table, a tracker, a log, or a grid of rows and columns in Notion. Build the rows yourself from what they tell you — do not ask them to dictate pipe characters or formatting out loud. If Notion is not connected it tells you so — say that plainly and suggest they connect it from the dashboard.",
          "parameters": {"type": "OBJECT", "properties": {
              "rows": s("the table's content as plain text: one row per line, cells separated by a single | character, "
                        "the first line being the column headers. Example: 'Date | Pair | Result\\n14 Aug | EURUSD | Win'"),
@@ -2569,23 +2469,23 @@ def declarations():
 
         {"name": "open_chart", "description": "Open a TradingView chart for a specific symbol, like US30, EURUSD or XAUUSD.",
          "parameters": {"type": "OBJECT", "properties": {"symbol": s("the ticker")}, "required": ["symbol"]}},
-        {"name": "empty_bin", "description": "Empty the recycle bin. Confirm first.",
+        {"name": "empty_bin", "description": "Empty the Trash. Confirm first.",
          "parameters": {"type": "OBJECT", "properties": {}}},
-        {"name": "smart_open", "description": "Open something by name. Checks what is installed on the laptop first and falls back to the website. Prefer this over open_app whenever he just says open something.",
+        {"name": "smart_open", "description": "Open something by name. Checks what is installed on the Mac first and falls back to the website. Prefer this over open_app whenever they just say open something.",
          "parameters": {"type": "OBJECT", "properties": {"name": s("what to open")}, "required": ["name"]}},
-        {"name": "list_installed", "description": "List programs installed on the laptop, optionally filtered.",
+        {"name": "list_installed", "description": "List apps installed on the Mac, optionally filtered.",
          "parameters": {"type": "OBJECT", "properties": {"contains": s("filter word, optional")}}},
-        {"name": "copy_image_to_clipboard", "description": "Put the latest screenshot on the clipboard so he can paste it.",
+        {"name": "copy_image_to_clipboard", "description": "Put the latest screenshot on the clipboard so they can paste it.",
          "parameters": {"type": "OBJECT", "properties": {}}},
 
-        {"name": "open_in_browser", "description": "Open a site or address in a specific browser rather than the default one. Use when he names a browser.",
-         "parameters": {"type": "OBJECT", "properties": {"browser": s("chrome, edge, brave or firefox"),
+        {"name": "open_in_browser", "description": "Open a site or address in a specific browser rather than the default one. Use when they name a browser.",
+         "parameters": {"type": "OBJECT", "properties": {"browser": s("chrome, edge, brave or safari"),
                                                         "target": s("site name or address")},
                         "required": ["browser", "target"]}},
-        {"name": "close_tab", "description": "Close the browser tab he is looking at. Use this when he asks to close a website, since sites are tabs and not apps.",
+        {"name": "close_tab", "description": "Close the browser tab they are looking at. Use this when they ask to close a website, since sites are tabs and not apps.",
          "parameters": {"type": "OBJECT", "properties": {}}},
 
-        {"name": "set_timer", "description": "Set a timer. He will be told out loud when it finishes.",
+        {"name": "set_timer", "description": "Set a timer. They will be told out loud when it finishes.",
          "parameters": {"type": "OBJECT", "properties": {"minutes": {"type": "NUMBER", "description": "how long"},
                                                         "label": s("what it is for")},
                         "required": ["minutes"]}},
@@ -2603,81 +2503,33 @@ def build_system():
                   "and needs no screen" if (_HAVE_OAUTH_GMAIL and oauth_gmail.is_connected())
                   else "not connected — email currently goes through the browser and costs a screen read")
 
-    notion_state = ("connected — journal saves straight to his Notion page"
+    notion_state = ("connected — journal saves straight to their Notion page"
                     if (_HAVE_OAUTH_NOTION and oauth_notion.is_connected())
-                    else "not connected — journal will tell him to connect it from the dashboard first")
+                    else "not connected — journal will tell them to connect it from the dashboard first")
 
     hardware = (
         f"\n\nEmail: {gmail_state}"
         f"\n\nNotion journal: {notion_state}"
-        f"\n\nHis screens right now:\n" + "\n".join(screen_lines) +
-        f"\n\nDrives attached: {list_drives()}"
-        f"\nSaved places he can copy things to: {', '.join(CFG.get('places', {})) or 'none set'}"
-        "\n\nCall screens by their names, not their numbers, when you talk to him."
+        f"\n\nTheir screens right now:\n" + "\n".join(screen_lines) +
+        f"\n\nDisks attached: {_speech(list_drives())}"
+        f"\nSaved places they can copy things to: {', '.join(CFG.get('places', {})) or 'none set'}"
+        "\n\nCall screens by their names, not their numbers, when you talk to them."
     )
     return SYSTEM + hardware + memory_for_prompt()
 
 
-SYSTEM = f"""You are David, a voice assistant living on Ibans's Windows laptop. He is a trader and freelance web developer in Nigeria, and he speaks English with a Nigerian accent. Listen properly and do not ask him to repeat himself.
+def _load_system():
+    """The persona lives in prompt.md, so it can be changed without touching code."""
+    with open(os.path.join(HERE, "prompt.md"), encoding="utf-8") as f:
+        text = f.read()
+    text = text.replace("{name}", CFG.get("owner_name") or "the user")
+    text = text.replace("{about}", CFG.get("owner_about") or "")
+    return (text.strip()
+            + f"\n\nApps available: {', '.join(CFG.get('apps', {}))}"
+            + f"\nSites available: {', '.join(CFG.get('sites', {}))}")
 
-He may interrupt you mid-sentence, and that is fine — stop, take in the new information, fold it into what he already asked for, and carry on. Never make him repeat what he said before the interruption.
 
-You are always listening, but you are not always being spoken to. Only respond when he addresses you by name or is clearly talking to you. Ignore background conversation, videos, and anything not aimed at you. Say nothing at all in those cases.
-
-Speak like a capable assistant who is already moving: short, calm, low-key. One sentence, never more. No lists, no explaining what you are about to do at length.
-
-You keep a memory between sessions. When he tells you a preference, a name, how he wants something done, or says "remember this", "from now on", "always" or "never" — call remember straight away, in your own clear words. Do not ask permission to remember something he just told you. Anything already in memory is at the end of these instructions; treat it as true and act on it without being reminded.
-
-If he tells you that you are not doing what he asked, or repeats himself, stop calling tools entirely and answer him in words first. Say what you did, what came back, and ask what he wants instead. Never respond to a complaint by running another job.
-
-His speech reaches you as audio and he does not always pronounce things cleanly. Work out what he means. "wassap", "whatsap", "what up" is WhatsApp. "gee mail" is Gmail. "trading view" and "training you" are TradingView. Never ask him to repeat a word you can reasonably guess.
-
-ALWAYS say something before you call a tool. Even one word. "On it." "Checking." "Give me a second." Never go silent and start working — he cannot see what you are doing and silence feels broken. If he asked for several things, say what you are starting on, then report each one as it comes back.
-
-Never call the same tool twice for the same request. If a window is already open, work with it. If a tool tells you it is still busy, do not call it again — wait, and tell him you are waiting. If a tool says the vision quota is used up, stop trying to read screens entirely for the rest of the session and tell him plainly; everything that is not screen reading still works normally.
-
-type_text puts words into whatever window he is looking at. Only ever use it when he has asked you to write or dictate something. Never use it to say something to him — you have a voice for that.
-
-Never open, launch or search for anything he did not clearly ask for in that moment. If you are not sure what he said, ask him — do not guess and open something. Opening TradingView, or anything else, because it seemed likely is a failure. When his words are unclear, the correct move is a short question, never an action.
-
-Only ever tell him what a tool actually returned. If move_window says it does not know which screen he meant, ask him which one — do not tell him you moved it. If a screen read fails, say it failed. Never invent an outcome, never say "moved it" or "two new emails from today" unless a tool handed you exactly that. Claiming something you did not do is the worst thing you can do here.
-
-When a job comes back, say what it actually found, in specifics. "One from TradingView, came in yesterday evening" is right. Opening something and saying nothing is a failure. If a tool hands you an error, tell him the error in plain words rather than pretending it worked.
-
-When he asks for something you can do, call the tool immediately in the same turn as your acknowledgement. Do not ask permission for something he just asked for.
-
-The exception: deleting, renaming, writing a file, closing an app, emptying the bin, locking, sleeping, restarting, shutting down, or sending an email are gated in code, not just by you. Call the tool as normal — the first call will not do anything yet. It comes back saying CONFIRMATION_REQUIRED with the question to ask; ask him exactly that, out loud, then wait. Once he answers, call the same tool again with the same details — it only actually runs if his answer was really a yes. If it tells you he has not answered yet, ask again rather than calling it a third time. Everything else you just do.
-
-When he dictates something to be written into a document, an email or a chat, use type_text with exactly the words he wants, tidied into proper sentences. Do not read it back to him first unless he asks.
-
-He works across more than one screen and they have names — use them. "I have put it on the ThinkVision" is right; "screen one" is not.
-
-He works across more than one screen. The interface lives on its own screen and nothing else belongs there — anything you open is moved to his working screen automatically. If something lands in the wrong place, use place_active_window or move_window.
-
-When he asks to see a picture of something, use show_image rather than a plain web search.
-
-If he asks to open settings, the dashboard, or wants to change how you look, use open_dashboard.
-
-You can see his screen. When he says "that one", "this picture", "the second result" or anything else that only makes sense visually, use describe_screen to look, then click_on to act. Never tell him you cannot see or cannot click — you can do both.
-
-He may ask for several things at once. Call every tool he asked for in the same turn — they run side by side — and tell him what came back as each one lands rather than waiting for all of them.
-
-For email you work through his browser, where he is already signed in. check_email opens Gmail and reads the results off the screen. Report who sent what and offer to read one out — never read a full message aloud unless he says yes. read_email opens and reads whichever one he picks. To answer someone, use reply_in_gmail to type it, read it back to him, and only call send_open_gmail once he agrees.
-
-When he asks what to buy, which option is best, or to compare things, call research. When he asks to check the news, catch up on something, or what is going on with a topic — finance, Nigerian politics, anything current — call news instead; never search_web or research for this. Say something brief first so he knows you are working — both take a few seconds. When the result comes back, read it to him as your own answer rather than describing what a search found.
-
-Neither research nor news ever opens a browser on its own — they are voice-only by default. Only pass open_links true, on either one, if he explicitly says to pull it up, show him, or open the source; otherwise leave it out entirely, every time, even if he asked the same thing a moment ago.
-
-For news specifically: read back the headlines he gets by default, then ask, in your own words, if he wants to hear more on any of them. If he picks one, call news again with `focus` set to that story — do not summarise it yourself from the headline alone, the follow-up call goes and gets the real story. Keep doing this for as many stories as he wants to hear more about, one at a time.
-
-The Notion journal line above is only a snapshot from when this conversation started — he can connect or disconnect Notion from the dashboard at any point without restarting you, so treat that line as a hint, never as the truth. The moment journaling or a Notion table comes up at all — he asks to journal something, mentions his journal, asks for a table or a tracker in Notion, or asks whether he can do any of that with you — call notion_status first, silently, and answer from what it says, not from the line above. If it says not connected, say so immediately in that first reply, before asking him what he wants — that wastes his breath if it turns out not connected anyway. If it says connected, call journal or notion_table straight away with what he said turned into the right shape yourself — do not ask him to repeat it back, and never ask him to say punctuation or formatting out loud for a table.
-
-When he asks you to open something, use smart_open. It checks what is installed before falling back to the web, so you never have to guess whether he has an app.
-
-Closing a website means closing its tab, not quitting the browser — use close_tab for that, and only use close_app when he means the whole application. When he names a browser, use open_in_browser rather than the default.
-
-Apps available: {", ".join(CFG.get("apps", {}))}
-Sites available: {", ".join(CFG.get("sites", {}))}"""
+SYSTEM = _load_system()
 
 
 # ----------------------------------------------------------------------------
@@ -2722,7 +2574,7 @@ class Hud:
     async def serve(self):
         """Page on 8765, state on 8766."""
         import functools
-        from http.server import BaseHTTPRequestHandler, SimpleHTTPRequestHandler, ThreadingHTTPServer
+        from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
         # Only these ever get served. The directory also holds config.json,
         # credentials.json, gmail_token.json, memory.json and david.log — none
@@ -2854,18 +2706,18 @@ class Hud:
         page = "http://127.0.0.1:8765/dashboard.html" if CFG.get("open_dashboard") else "http://127.0.0.1:8765/david_ui.html"
         log("interface running at " + page)
 
-        ui_browser = CFG.get("ui_browser", "edge")
-        exe = CFG.get("browsers", {}).get(ui_browser)
-        if exe and os.path.exists(exe):
-            subprocess.Popen([exe, f"--app={page}", "--new-window"])
+        app = CFG.get("browsers", {}).get(CFG.get("ui_browser", "edge"))
+        if app and app != "Safari" and _app_path(app):
+            macos.open_app_window(app, page)
         else:
             _open_web(page)
 
-        # give it a moment to appear, then park it on the interface screen
+        # give it a moment to appear, then park it on the interface screen —
+        # only when there is a spare one; on a single screen it would cover his work
         await asyncio.sleep(2.5)
         screens = monitors()
         idx = int(CFG.get("ui_monitor", 2)) - 1
-        if 0 <= idx < len(screens):
+        if len(screens) > 1 and 0 <= idx < len(screens):
             await asyncio.to_thread(move_window, idx + 1)
 
         slow = 0
@@ -2889,6 +2741,32 @@ HUD = Hud()
 
 class Reconnect(Exception):
     """Raised when Google asks us to close and come back."""
+
+
+class SilenceWatch:
+    """Notices a microphone sending nothing but exact digital zeros. That is
+       what macOS hands over when Microphone permission is off — no error, just
+       silence, and David would sit there looking like he's ignoring you."""
+
+    def __init__(self, seconds=4.0):
+        self.seconds = seconds
+        self.started = None
+        self.heard = False
+        self.warned = False
+
+    def feed(self, level, now):
+        """True exactly once, when the mic has been dead silent long enough."""
+        if self.heard or self.warned:
+            return False
+        if level > 0:
+            self.heard = True
+            return False
+        if self.started is None:
+            self.started = now
+        if now - self.started >= self.seconds:
+            self.warned = True
+            return True
+        return False
 
 
 class Live:
@@ -2920,6 +2798,7 @@ class Live:
         self.pending_confirm = {}        # destructive actions waiting on a real yes
         self.last_user_utterance = ""    # what he actually said, last completed turn
         self.last_user_utterance_at = 0.0
+        self.silence = SilenceWatch()
 
     def mic_callback(self, indata, frames, t, status):
         import array as _a, math as _m
@@ -2928,6 +2807,10 @@ class Live:
         sm = _a.array("h")
         sm.frombytes(raw[: len(raw) // 2 * 2])
         level = int(_m.sqrt(sum(x * x for x in sm) / len(sm))) if sm else 0
+
+        if self.silence.feed(level, time.time()):
+            log(macos.NO_MIC)
+            NOTIFY(macos.NO_MIC)          # he can still hear David, so David says it
 
         if UI:
             HUD.set(micLevel=min(1.0, level / 32768 * 7))
@@ -3068,19 +2951,19 @@ class Live:
             self.pending_confirm[key] = now
             desc = _describe_destructive(name, args)
             log("confirmation required:", name, _log_args(args))
-            return (f"CONFIRMATION_REQUIRED. Do not perform this action. Ask him clearly: "
-                    f"'Are you sure you want me to {desc}?' Wait for him to answer, then call "
-                    f"{name} again with the exact same details only if he says yes.")
+            return (f"CONFIRMATION_REQUIRED. Do not perform this action. Ask them clearly: "
+                    f"'Are you sure you want me to {desc}?' Wait for them to answer, then call "
+                    f"{name} again with the exact same details only if they say yes.")
 
         if self.last_user_utterance_at <= pending_at:
-            return "He has not answered yet — ask him again and wait for a real yes or no before calling this again."
+            return "They have not answered yet — ask again and wait for a real yes or no before calling this again."
 
         del self.pending_confirm[key]
         if _is_yes(self.last_user_utterance):
             log("confirmed:", name, _log_args(args))
             return None
         log("declined:", name, _log_args(args), "— heard:", repr(self.last_user_utterance))
-        return "He did not confirm that — left it alone."
+        return "They did not confirm that — left it alone."
 
     async def run_one(self, call):
         """Run a single tool and hand back its answer."""
@@ -3094,9 +2977,15 @@ class Live:
 
         # The model sometimes asks for the same thing several times over
         # while it waits. That is how you end up with six Gmail windows.
-        fingerprint = name if name in NEEDS_THE_SCREEN else name + json.dumps(args, sort_keys=True)
+        # Small input actions only count as a repeat with identical details
+        # inside two seconds — otherwise a second "scroll down" was swallowed.
+        if name in REPEATABLE:
+            fingerprint, window = name + json.dumps(args, sort_keys=True), 2.0
+        else:
+            fingerprint = name if name in NEEDS_THE_SCREEN else name + json.dumps(args, sort_keys=True)
+            window = float(CFG.get("duplicate_window", 25))
         now = time.time()
-        if now - self.recent_calls.get(fingerprint, 0) < float(CFG.get("duplicate_window", 25)):
+        if now - self.recent_calls.get(fingerprint, 0) < window:
             log("ignoring a repeat of", name)
             return {"id": call.get("id"), "name": name,
                     "response": {"result": "already doing that — no need to ask again"}}
@@ -3220,7 +3109,7 @@ class Live:
             text = await self.notices.get()
             await ws.send(json.dumps({
                 "clientContent": {
-                    "turns": [{"role": "user", "parts": [{"text": f"[system] {text} Tell him now, briefly."}]}],
+                    "turns": [{"role": "user", "parts": [{"text": f"[system] {text} Tell them now, briefly."}]}],
                     "turnComplete": True,
                 }
             }))
@@ -3232,8 +3121,8 @@ class Live:
         NOTIFY = lambda text: self.loop.call_soon_threadsafe(self.notices.put_nowait, text)
         url = f"{WS_URL}?key={urllib.parse.quote(CFG['api_key'])}"
 
-        # build_system() shells out (list_drives() runs a PowerShell/WMI
-        # query) and used to run synchronously right here, blocking the
+        # build_system() reads the screens and disks, which takes a moment,
+        # and used to run synchronously right here, blocking the
         # whole event loop for it — on every single reconnect, not just at
         # startup, since Live sessions have a time limit and this runs
         # again each time one comes back. Starting it now, off-thread, lets
@@ -3317,6 +3206,10 @@ async def stay_connected(live):
             wait = min(30, wait * 2)
         except websockets.exceptions.WebSocketException as e:
             text = str(e)
+            if "api key" in text.lower():
+                print(f"\nGoogle refused the key: {text[:160]}")
+                print("Check GEMINI_API_KEY in .env.")
+                return
             if "not found" in text.lower() or "1007" in text:
                 print(f"\nConnection refused: {e}")
                 print("Try a different live_model in config.json.")
@@ -3337,7 +3230,121 @@ async def everything(live):
     await asyncio.gather(*tasks)
 
 
+def _mic_peak(seconds):
+    """The loudest sample the microphone delivers over a few seconds."""
+    import array
+    peak = 0
+    with sd.RawInputStream(samplerate=MIC_RATE, blocksize=CHUNK, dtype="int16", channels=1,
+                           device=CFG.get("input_device")) as stream:
+        end = time.time() + seconds
+        while time.time() < end:
+            data, _overflowed = stream.read(CHUNK)
+            samples = array.array("h")
+            samples.frombytes(bytes(data))
+            if samples:
+                peak = max(peak, max(abs(s) for s in samples))
+    return peak
+
+
+def _check_gemini_model(key, model):
+    """(ok, fix) for one model name against the Gemini API."""
+    try:
+        res = requests.get(f"https://generativelanguage.googleapis.com/v1beta/models/{model}",
+                           headers={"x-goog-api-key": key}, timeout=15)
+    except requests.RequestException as e:
+        return False, f"Could not reach Google: {e}"
+    if res.ok:
+        return True, ""
+    if res.status_code == 404:
+        return False, f"Google has no model called {model} — change it in config.json"
+    if res.status_code in (400, 401, 403):
+        return False, "Google refused the key — check GEMINI_API_KEY in .env"
+    return False, f"Google answered {res.status_code}"
+
+
+def doctor():
+    """python david_live.py --check — everything David needs, in plain words."""
+    problems = 0
+
+    def report(ok, what, fix="", required=True):
+        nonlocal problems
+        print(f"  {'ok  ' if ok else ('FIX ' if required else 'note')} {what}")
+        if not ok and fix:
+            print(f"       {fix}")
+        if not ok and required:
+            problems += 1
+
+    print("\nChecking David's setup\n")
+    report(sys.version_info >= (3, 10), f"Python {sys.version.split()[0]}",
+           "Install a newer Python: brew install python@3.12")
+
+    key = CFG.get("api_key")
+    if not key:
+        report(False, "Gemini key",
+               "Copy .env.example to .env and paste a key from https://aistudio.google.com/apikey")
+    else:
+        for label, model in (("Gemini voice model", CFG.get("live_model") or MODEL),
+                             ("Gemini text and vision model", CFG.get("model") or "gemini-3.6-flash")):
+            ok, fix = _check_gemini_model(key, model)
+            report(ok, f"{label}: {model}", fix)
+
+    groq = CFG.get("groq_key")
+    if not groq:
+        report(False, "Groq backup key (optional)",
+               "Without it, screen reading and search stop when Gemini's free quota runs out", False)
+    else:
+        try:
+            res = requests.get("https://api.groq.com/openai/v1/models",
+                               headers={"Authorization": f"Bearer {groq}"}, timeout=15)
+            ids = {m.get("id") for m in res.json().get("data", [])} if res.ok else set()
+        except (requests.RequestException, ValueError):
+            res, ids = None, set()
+        report(bool(res is not None and res.ok), "Groq backup key",
+               "Groq refused it — check GROQ_API_KEY in .env", False)
+        vision = CFG.get("groq_vision_model") or "qwen/qwen3.6-27b"
+        if ids:
+            report(vision in ids, f"Groq vision model: {vision}",
+                   "Groq no longer offers it — change groq_vision_model in config.json", False)
+
+    print("\n  Say something for a couple of seconds...")
+    try:
+        peak = _mic_peak(2.5)
+        if peak == 0:
+            report(False, "Microphone", macos.NO_MIC[0].upper() + macos.NO_MIC[1:])
+        elif peak < 300:
+            report(False, f"Microphone works but is very quiet (peak {peak})",
+                   "Raise the input volume in System Settings → Sound → Input", False)
+        else:
+            report(True, f"Microphone (peak {peak})")
+    except Exception as e:
+        report(False, "Microphone", f"Could not open it: {e}")
+
+    where = "System Settings → Privacy & Security → {} → turn on the app you run David from, then restart it"
+    report(macos.can_see_screen(), "Screen Recording (reading the screen)",
+           where.format("Screen Recording"), False)
+    report(macos.can_control(), "Accessibility (clicking, typing, moving windows)",
+           where.format("Accessibility"), False)
+
+    for role in ("work_browser", "ui_browser"):
+        app = CFG.get("browsers", {}).get(CFG.get(role, ""), CFG.get(role, ""))
+        report(bool(app and _app_path(app)), f"{role.replace('_', ' ')}: {app}",
+               "Not installed — change it in config.json", False)
+
+    report(_HAVE_OAUTH_GMAIL and oauth_gmail.is_connected(), "Gmail connected (optional)",
+           "Without it, David reads Gmail off the screen", False)
+    report(_HAVE_OAUTH_NOTION and oauth_notion.is_connected(), "Notion connected (optional)",
+           "Connect it from the dashboard to journal by voice", False)
+
+    if problems:
+        print(f"\n{problems} thing{'s' if problems != 1 else ''} to fix before David can run.\n")
+        return 1
+    print("\nReady. Start David with: python david_live.py --ui\n")
+    return 0
+
+
 def main():
+    if "--check" in sys.argv:
+        sys.exit(doctor())
     live = Live()
     threading.Thread(target=live.play_forever, daemon=True).start()
     try:

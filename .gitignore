@@ -5,3 +5,16 @@ model-small/
 # Python
 __pycache__/
 *.pyc
+.venv/
+
+# Secrets and personal data — this repository is public, never commit these
+.env
+credentials.json
+gmail_token.json
+notion_token.json
+memory.json
+*.log
+config.json.tmp
+
+# macOS
+.DS_Store
