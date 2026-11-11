@@ -2247,7 +2247,7 @@ def set_reminder(title, at, day=""):
 def _one_line(text, limit):
     """Outside text (a sender, a subject, a headline) squeezed onto one short line."""
     flat = " ".join(str(text or "").split())
-    return flat.replace("<<<", "<").replace(">>>", ">")[:limit]
+    return flat.replace("<", "").replace(">", "")[:limit]   # no brackets, so no fence can be rebuilt
 
 
 def _briefing_mail():

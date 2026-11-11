@@ -175,6 +175,10 @@ class Briefing(unittest.TestCase):
         self.assertNotIn("<<<", out.split(f"<<<{fence}\n")[1])
         self.assertNotIn(">>> now", out)
 
+    def test_a_run_of_brackets_cannot_rebuild_a_marker(self):
+        self.assertNotIn("<", d._one_line("<" * 9 + " x " + ">" * 9, 80))
+        self.assertNotIn(">", d._one_line("<" * 9 + " x " + ">" * 9, 80))
+
     def test_each_briefing_uses_a_fresh_fence(self):
         a = re.search(r"DATA-[0-9a-f]{16}", d.morning_briefing()).group(0)
         b = re.search(r"DATA-[0-9a-f]{16}", d.morning_briefing()).group(0)
