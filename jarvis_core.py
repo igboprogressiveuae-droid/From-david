@@ -14,6 +14,7 @@ telemetry off BEFORE openjarvis is imported.
 
 import json
 import os
+import threading
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 HOME = os.path.join(HERE, ".openjarvis")
@@ -62,12 +63,33 @@ def _json_schema(node):
     return node
 
 
+class _Running:
+    """Names of actions whose function is executing right now (thread-safe)."""
+
+    def __init__(self):
+        self._names, self._lock = [], threading.Lock()
+
+    def add(self, name):
+        with self._lock:
+            self._names.append(name)
+
+    def discard(self, name):
+        with self._lock:
+            if name in self._names:
+                self._names.remove(name)
+
+    def any_of(self, names):
+        with self._lock:
+            return any(n in names for n in self._names)
+
+
 class DavidTool(BaseTool):
     """One David action, wrapped. Calls the existing function unchanged."""
 
-    def __init__(self, decl, fn, *, timeout=30.0, destructive=False):
+    def __init__(self, decl, fn, *, timeout=30.0, destructive=False, running=None):
         self.tool_id = decl["name"]
         self._fn = fn
+        self._running = running if running is not None else _Running()
         self._spec = ToolSpec(
             name=decl["name"],
             description=decl.get("description", ""),
@@ -84,7 +106,13 @@ class DavidTool(BaseTool):
         return self._spec
 
     def execute(self, **params):
-        out = self._fn(**params)
+        # Cleared only when the function really returns, not when a timeout
+        # gives up waiting for it: OpenJarvis cannot stop a running function.
+        self._running.add(self.tool_id)
+        try:
+            out = self._fn(**params)
+        finally:
+            self._running.discard(self.tool_id)
         panel = out if hasattr(out, "speech") else None
         text = out.speech if panel else ("" if out is None else str(out))
         return ToolResult(tool_name=self.tool_id, content=text, success=True,
@@ -97,6 +125,8 @@ class Engine:
     def __init__(self, actions, decls, *, destructive=(), slow=(), screen=(), patient=()):
         by_name = {d["name"]: d for d in decls}
         self.tools = []
+        self._running = _Running()
+        self._screen = frozenset(screen)
         for name in actions:
             decl = by_name.get(name) or {"name": name, "description": name}
             # Jobs that look at the screen or search the web legitimately take a while.
@@ -105,9 +135,14 @@ class Engine:
                        else 120.0 if (name in slow or name in screen) else 45.0)
             # looked up at call time, so swapping an entry in `actions` still takes effect
             tool = DavidTool(decl, lambda _n=name, **kw: actions[_n](**kw),
-                             timeout=timeout, destructive=name in destructive)
+                             timeout=timeout, destructive=name in destructive,
+                             running=self._running)
             self.tools.append(tool)
         self.executor = ToolExecutor(self.tools)
+
+    def screen_job_running(self):
+        """True while any mouse/keyboard job is still executing, even one that timed out."""
+        return self._running.any_of(self._screen)
 
     def names(self):
         return [t.spec.name for t in self.tools]
