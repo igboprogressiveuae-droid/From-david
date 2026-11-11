@@ -5,10 +5,11 @@
 <title>David</title>
 <style>
   :root {
-    --cyan: #35B8F0; --cyan-bright: #7FE4FF; --ice: #CFEBFA; --dim: #4E7893;
+    --cyan: #35B8F0; --cyan-bright: #7FE4FF; --ice: #CFEBFA; --dim: #6C97B3; --amber: #E8A33D;
     --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
   }
   * { box-sizing: border-box; }
+  ::selection { background: rgba(53,184,240,.35); color: #fff; }
   html, body {
     margin: 0; height: 100%; overflow: hidden; background: transparent;
     font-family: var(--mono); color: var(--ice);
@@ -65,14 +66,14 @@
   }
 
   .state {
-    font-size: 9px; letter-spacing: .22em; text-transform: uppercase; color: var(--dim);
+    font-size: 10px; letter-spacing: .22em; text-transform: uppercase; color: var(--dim);
     display: flex; align-items: center; gap: 7px; margin-bottom: 10px;
   }
   .state .led {
     width: 6px; height: 6px; border-radius: 50%; background: var(--dim);
   }
   .state.listening .led { background: #fff; box-shadow: 0 0 8px #fff; }
-  .state.thinking .led { background: var(--amber, #E8A33D); box-shadow: 0 0 8px #E8A33D; animation: blink 1s ease-in-out infinite; }
+  .state.thinking .led { background: var(--amber); box-shadow: 0 0 8px var(--amber); animation: blink 1s ease-in-out infinite; }
   .state.speaking .led { background: var(--cyan-bright); box-shadow: 0 0 8px var(--cyan-bright); }
 
   .wave { display: flex; align-items: center; gap: 2px; height: 30px; margin-bottom: 10px; }
@@ -94,15 +95,16 @@
 <body>
   <div class="wrap" id="wrap">
     <div class="panel" id="panel">
-      <div class="state" id="state"><span class="led"></span><span id="stateText">Standing by</span></div>
-      <div class="wave" id="wave"></div>
-      <div class="said" id="said"></div>
+      <div class="state" id="state" role="status" aria-live="polite"><span class="led"></span><span id="stateText">Standing by</span></div>
+      <div class="wave" id="wave" aria-hidden="true"></div>
+      <div class="said" id="said" aria-live="polite"></div>
     </div>
-    <div class="dot" id="dot"></div>
+    <div class="dot" id="dot" aria-hidden="true"></div>
   </div>
 
 <script>
 const BARS = 26;
+const calm = matchMedia("(prefers-reduced-motion: reduce)");
 const wave = document.getElementById("wave");
 for (let i = 0; i < BARS; i++) wave.appendChild(document.createElement("i"));
 const bars = [...wave.children];
@@ -122,7 +124,7 @@ function paint() {
   level += (target - level) * 0.3;
   bars.forEach((b, i) => {
     const mid = 1 - Math.abs(i - (BARS - 1) / 2) / ((BARS - 1) / 2);
-    b.style.height = (2 + level * 26 * (0.3 + mid * 0.7) * (0.5 + Math.random() * 0.5)).toFixed(1) + "px";
+    b.style.height = (2 + level * 26 * (0.3 + mid * 0.7) * (calm.matches ? 0.8 : 0.5 + Math.random() * 0.5)).toFixed(1) + "px";
   });
   requestAnimationFrame(paint);
 }
@@ -151,7 +153,12 @@ function apply(s) {
 function connect() {
   const ws = new WebSocket("ws://127.0.0.1:8766");
   ws.onmessage = (e) => { try { apply(JSON.parse(e.data)); } catch (_) {} };
-  ws.onclose = () => setTimeout(connect, 1500);
+  ws.onclose = () => {
+    stateEl.className = "state";
+    stateText.textContent = "Reconnecting";
+    wrap.classList.remove("awake");
+    setTimeout(connect, 1500);
+  };
 }
 connect();
 </script>

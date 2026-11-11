@@ -11,7 +11,7 @@
     --cyan: #35B8F0;
     --cyan-bright: #7FE4FF;
     --ice: #CFEBFA;
-    --dim: #4E7893;
+    --dim: #6C97B3;   /* 6.5:1 on --bg; the old #4E7893 was ~4:1, too faint for small type */
     --green: #35E08A;
     --amber: #E8A33D;
     --mono: ui-monospace, "SF Mono", Menlo, "Cascadia Mono", Consolas, monospace;
@@ -20,6 +20,9 @@
 
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; overflow: hidden; }
+  ::selection { background: rgba(53,184,240,.35); color: #fff; }
+  :focus-visible { outline: 2px solid var(--cyan-bright); outline-offset: 2px; }
+  * { scrollbar-width: thin; scrollbar-color: rgba(56,170,240,.4) transparent; }
 
   body {
     background:
@@ -58,7 +61,7 @@
   h2 {
     margin: 0 0 10px;
     font-family: var(--mono);
-    font-size: 10px;
+    font-size: 11px;
     letter-spacing: .22em;
     text-transform: uppercase;
     color: var(--ice);
@@ -85,19 +88,19 @@
     box-shadow: 0 0 14px rgba(53,184,240,.35), inset 0 0 12px rgba(53,184,240,.2);
   }
   .brand b { font-size: 19px; letter-spacing: .06em; display: block; line-height: 1.05; }
-  .brand span { font-family: var(--mono); font-size: 9px; color: var(--dim); letter-spacing: .18em; }
+  .brand span { font-family: var(--mono); font-size: 10px; color: var(--dim); letter-spacing: .18em; }
 
-  .stat { font-family: var(--mono); font-size: 9px; letter-spacing: .18em; color: var(--dim); }
+  .stat { font-family: var(--mono); font-size: 10px; letter-spacing: .18em; color: var(--dim); }
   .stat b { display: block; font-size: 12px; letter-spacing: .12em; color: var(--green); margin-top: 3px; }
   .stat.right { text-align: right; }
 
   .clock { text-align: center; font-family: var(--mono); }
-  .clock .date { font-size: 9px; letter-spacing: .2em; color: var(--dim); }
+  .clock .date { font-size: 10px; letter-spacing: .2em; color: var(--dim); }
   .clock .time { font-size: 24px; letter-spacing: .08em; color: #fff; text-shadow: 0 0 18px rgba(53,184,240,.5); }
 
   .company { text-align: right; }
   .company b { font-size: 15px; font-style: italic; letter-spacing: .02em; }
-  .company span { display: block; font-family: var(--mono); font-size: 8px; letter-spacing: .22em; color: var(--dim); }
+  .company span { display: block; font-family: var(--mono); font-size: 10px; letter-spacing: .22em; color: var(--dim); }
 
   /* ---------- layout ---------- */
   main { display: grid; grid-template-columns: 300px 1fr 320px; gap: 10px; min-height: 0; }
@@ -131,12 +134,12 @@
     position: absolute; inset: 0; display: grid; place-content: center; text-align: center;
     font-family: var(--mono);
   }
-  .dial .val small { display: block; font-size: 8px; letter-spacing: .16em; color: var(--dim); }
+  .dial .val small { display: block; font-size: 10px; letter-spacing: .16em; color: var(--dim); }
   .dial .val b { font-size: 15px; }
 
   /* ---------- data stream ---------- */
   .stream {
-    font-family: var(--mono); font-size: 9px; line-height: 1.35;
+    font-family: var(--mono); font-size: 10px; line-height: 1.35;
     color: rgba(53,184,240,.5); word-break: break-all; overflow: hidden; height: 100%;
   }
 
@@ -199,6 +202,8 @@
     text-shadow: 0 0 30px rgba(90,200,255,.85), 0 0 70px rgba(53,184,240,.45);
   }
 
+  .offline { opacity: .4; }
+  .offline .r2, .offline .r5 { animation-play-state: paused; }
   .thinking .r2 { animation-duration: 1.5s; }
   .thinking .r5 { animation-duration: .8s; }
   .speaking .glow { background: radial-gradient(circle, rgba(130,225,255,.7), rgba(30,120,190,.24) 55%, transparent 72%); }
@@ -209,7 +214,7 @@
 
   /* ---------- typed results panel ---------- */
   .resultPanel {
-    position: absolute; inset: 0; z-index: 1;
+    position: absolute; inset: 0; bottom: var(--said-h, 0px); z-index: 1;
     background: var(--panel);
     border: 1px solid var(--edge);
     border-radius: 16px;
@@ -221,7 +226,7 @@
     display: flex; flex-direction: column; min-height: 0;
     opacity: 0; transform: scale(.96) translateY(12px);
     pointer-events: none;
-    transition: opacity .4s cubic-bezier(.4,0,.2,1), transform .4s cubic-bezier(.4,0,.2,1);
+    transition: opacity .4s cubic-bezier(.4,0,.2,1), transform .4s cubic-bezier(.4,0,.2,1), bottom .3s cubic-bezier(.4,0,.2,1);
   }
   .stage.docked .resultPanel { opacity: 1; transform: scale(1) translateY(0); pointer-events: auto; }
   .resultPanel::before, .resultPanel::after {
@@ -232,7 +237,7 @@
   .resultPanel::after { bottom: -1px; right: -1px; border-bottom: 2px solid; border-right: 2px solid; }
 
   .rp-title {
-    font-family: var(--mono); font-size: 9px; letter-spacing: .2em; color: var(--dim);
+    font-family: var(--mono); font-size: 10px; letter-spacing: .2em; color: var(--dim);
     text-transform: uppercase; padding-bottom: 10px; border-bottom: 1px solid rgba(56,170,240,.15);
     margin-bottom: 10px; flex: none;
   }
@@ -249,11 +254,11 @@
   .wx-loc { font-size: 13px; color: var(--dim); margin-top: 2px; }
   .wx-blocks { display: flex; gap: 10px; flex: none; }
   .wx-block { flex: 1; background: rgba(9,24,38,.4); border: 1px solid rgba(56,170,240,.18); border-radius: 8px; padding: 8px 12px; }
-  .wx-block span { display: block; font-family: var(--mono); font-size: 8px; letter-spacing: .18em; color: var(--dim); }
+  .wx-block span { display: block; font-family: var(--mono); font-size: 10px; letter-spacing: .18em; color: var(--dim); }
   .wx-block b { display: block; font-size: 15px; color: var(--ice); margin-top: 3px; font-weight: 500; }
   .wx-forecast { display: flex; gap: 10px; margin-top: auto; flex: none; }
   .wx-day { flex: 1; text-align: center; background: rgba(9,24,38,.35); border: 1px solid rgba(56,170,240,.14); border-radius: 8px; padding: 10px 6px; }
-  .wx-day-name { font-family: var(--mono); font-size: 9px; letter-spacing: .14em; color: var(--dim); text-transform: uppercase; }
+  .wx-day-name { font-family: var(--mono); font-size: 10px; letter-spacing: .14em; color: var(--dim); text-transform: uppercase; }
   .wx-day-icon { width: 30px; height: 30px; margin: 6px auto; }
   .wx-day-icon svg { width: 100%; height: 100%; color: var(--cyan-bright); }
   .wx-day-temps b { color: var(--ice); font-size: 13px; }
@@ -263,26 +268,27 @@
   .em-list, .em-detail { display: flex; flex-direction: column; height: 100%; min-height: 0; }
   .em-rows { overflow-y: auto; min-height: 0; }
   .em-row { display: flex; align-items: center; gap: 10px; padding: 10px 4px; border-bottom: 1px solid rgba(56,170,240,.08); cursor: pointer; transition: background .15s ease; }
-  .em-row:hover { background: rgba(53,184,240,.07); }
+  .em-row:hover, .em-row:focus-visible { background: rgba(53,184,240,.07); }
   .em-dot { width: 7px; height: 7px; border-radius: 50%; background: transparent; flex: none; }
   .em-dot.unread { background: var(--cyan-bright); box-shadow: 0 0 6px var(--cyan-bright); }
   .em-row-main { flex: 1; min-width: 0; }
   .em-from { font-size: 13px; color: var(--ice); }
   .em-subject { font-size: 12px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .em-time { font-family: var(--mono); font-size: 9px; color: var(--dim); flex: none; }
+  .em-time { font-family: var(--mono); font-size: 10px; color: var(--dim); flex: none; }
   .em-back {
     align-self: flex-start; background: none; border: 1px solid rgba(56,170,240,.32); color: var(--cyan-bright);
     font-family: var(--mono); font-size: 10px; letter-spacing: .1em; padding: 5px 10px; border-radius: 5px;
     cursor: pointer; margin-bottom: 14px; flex: none;
   }
   .em-back:hover { background: rgba(53,184,240,.1); }
+  .em-back { min-height: 32px; }
   .em-detail-subject { font-size: 16px; color: #fff; flex: none; }
   .em-detail-meta { font-family: var(--mono); font-size: 10px; color: var(--dim); margin-top: 4px; margin-bottom: 14px; flex: none; }
   .em-detail-body { font-size: 13px; line-height: 1.6; color: var(--ice); overflow-y: auto; min-height: 0; white-space: pre-wrap; }
 
   /* -- research -- */
   .rs { display: flex; flex-direction: column; gap: 12px; height: 100%; min-height: 0; }
-  .rs-tag { font-family: var(--mono); font-size: 9px; letter-spacing: .16em; color: var(--green); }
+  .rs-tag { font-family: var(--mono); font-size: 10px; letter-spacing: .16em; color: var(--green); }
   .rs-tag.dim { color: var(--dim); }
   .rs-winner { background: rgba(53,184,240,.08); border: 1px solid rgba(56,170,240,.3); border-radius: 10px; padding: 14px 16px; flex: none; }
   .rs-name { font-size: 22px; color: #fff; margin-top: 5px; text-shadow: 0 0 16px rgba(53,184,240,.4); }
@@ -314,7 +320,7 @@
     position: fixed;
     left: 50%; bottom: 30px;
     transform: translate(-50%, 14px) scale(.97);
-    width: min(64vw, 820px);
+    width: min(calc(100vw - 700px), 820px);
     max-height: 34vh;
     overflow-y: auto;
     background: rgba(9, 24, 38, .5);
@@ -331,7 +337,7 @@
     z-index: 40;
   }
   .said::before {
-    content: "DAVID"; display: block; font-family: var(--mono); font-size: 9px;
+    content: "DAVID"; display: block; font-family: var(--mono); font-size: 10px;
     letter-spacing: .3em; color: var(--cyan-bright); opacity: .85; margin-bottom: 8px;
   }
   .said span { font-size: 16px; line-height: 1.55; color: var(--ice); }
@@ -340,7 +346,7 @@
   /* ---------- protocols ---------- */
   .proto { display: flex; flex-direction: column; gap: 12px; }
   .proto .row { font-size: 11px; display: grid; grid-template-columns: 1fr auto; gap: 6px; }
-  .proto .row .tag { font-family: var(--mono); font-size: 9px; letter-spacing: .14em; }
+  .proto .row .tag { font-family: var(--mono); font-size: 10px; letter-spacing: .14em; }
   .proto .row .tag.on { color: var(--green); }
   .proto .row .tag.off { color: var(--dim); }
   .proto .bar { grid-column: 1 / -1; height: 3px; background: rgba(56,170,240,.15); }
@@ -351,12 +357,12 @@
   .timeline .track { height: 1px; background: rgba(56,170,240,.3); margin: 16px 0 10px; position: relative; }
   .timeline .dot { position: absolute; top: -3px; width: 7px; height: 7px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 10px var(--cyan); }
   .timeline .items { display: grid; grid-auto-flow: column; gap: 8px; }
-  .timeline .items div { font-family: var(--mono); font-size: 8px; letter-spacing: .1em; color: var(--dim); }
-  .timeline .items div b { display: block; color: var(--ice); font-size: 8px; margin-top: 3px; }
+  .timeline .items div { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; color: var(--dim); }
+  .timeline .items div b { display: block; color: var(--ice); font-size: 10px; margin-top: 3px; }
 
   /* ---------- session ---------- */
   .session { display: grid; grid-template-columns: 1fr 96px; gap: 12px; align-items: center; }
-  .session .rows { display: grid; gap: 9px; font-family: var(--mono); font-size: 9px; letter-spacing: .14em; color: var(--dim); }
+  .session .rows { display: grid; gap: 9px; font-family: var(--mono); font-size: 10px; letter-spacing: .14em; color: var(--dim); }
   .session .rows b { display: block; font-size: 15px; letter-spacing: .06em; color: var(--ice); margin-top: 2px; }
   .session .rows b.good { color: var(--green); }
 
@@ -371,6 +377,15 @@
   .blink { animation: blink 1.8s ease-in-out infinite; }
 
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+  /* a narrow window keeps the centre (state, results, answer) and drops the side furniture */
+  @media (max-width: 1100px) {
+    main { grid-template-columns: 1fr; }
+    aside { display: none; }
+    header { grid-template-columns: auto 1fr auto; }
+    .said { width: min(92vw, 820px); }
+    header .stat, header .company { display: none; }
+  }
 </style>
 </head>
 <body>
@@ -393,8 +408,8 @@
   <aside class="left">
     <section class="panel">
       <h2>Voice Recognition</h2>
-      <div class="wave" id="wave"></div>
-      <div class="caption idle" id="voiceCaption">Standing by…</div>
+      <div class="wave" id="wave" aria-hidden="true"></div>
+      <div class="caption idle" id="voiceCaption" role="status">Standing by…</div>
     </section>
 
     <section class="panel">
@@ -413,33 +428,33 @@
 
     <section class="panel">
       <h2>Data Stream</h2>
-      <div class="stream" id="stream"></div>
+      <div class="stream" id="stream" aria-hidden="true"></div>
     </section>
   </aside>
 
   <section class="centre">
-    <div class="state-line">
+    <div class="state-line" role="status" aria-live="polite">
       <b id="stateBig">STANDING BY</b>
       <span id="stateSub">— awaiting command —</span>
     </div>
 
     <div class="stage" id="stage">
-      <div class="reactor" id="reactor">
+      <div class="reactor" id="reactor" aria-hidden="true">
         <div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div>
         <div class="ring r4"></div><div class="ring r5"></div>
         <div class="glow" id="glow"></div>
         <div class="name">DAVID</div>
       </div>
-      <div class="resultPanel" id="resultPanel"></div>
+      <div class="resultPanel" id="resultPanel" aria-live="polite"></div>
     </div>
 
-    <div class="said" id="said"><span id="saidText"></span></div>
+    <div class="said" id="said" role="status" aria-live="polite"><span id="saidText"></span></div>
   </section>
 
   <aside class="right">
     <section class="panel">
       <h2>Global Overview</h2>
-      <svg class="map" id="map" viewBox="0 0 320 150" preserveAspectRatio="xMidYMid meet"></svg>
+      <svg class="map" id="map" aria-hidden="true" viewBox="0 0 320 150" preserveAspectRatio="xMidYMid meet"></svg>
     </section>
 
     <section class="panel">
@@ -522,8 +537,9 @@ function setDial(key, pct) {
 
 // data stream — decorative
 setInterval(() => {
+  if (document.hidden || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   const el = document.getElementById("stream");
-  const rows = 14, cols = 46;
+  const rows = 14, cols = 38;
   let out = "";
   for (let r = 0; r < rows; r++) {
     let line = "";
@@ -551,12 +567,13 @@ const STATE_TEXT = {
 };
 
 let level = 0, target = 0, startedAt = Date.now(), commands = 0;
+const calm = matchMedia("(prefers-reduced-motion: reduce)");
 
 function paint() {
   level += (target - level) * 0.25;
   bars.forEach((b, i) => {
     const mid = 1 - Math.abs(i - (BARS - 1) / 2) / ((BARS - 1) / 2);
-    const h = 3 + level * 70 * (0.3 + mid * 0.7) * (0.45 + Math.random() * 0.55);
+    const h = 3 + level * 70 * (0.3 + mid * 0.7) * (calm.matches ? 0.8 : 0.45 + Math.random() * 0.55);
     b.style.height = h.toFixed(1) + "px";
   });
   requestAnimationFrame(paint);
@@ -588,22 +605,22 @@ function renderWeather(d) {
     <div class="wx-day">
       <div class="wx-day-name">${esc(f.day)}</div>
       <div class="wx-day-icon">${WEATHER_ICONS[f.icon] || WEATHER_ICONS.cloud}</div>
-      <div class="wx-day-temps"><b>${f.hi ?? "—"}°</b><span>${f.lo ?? "—"}°</span></div>
+      <div class="wx-day-temps"><b>${esc(f.hi ?? "—")}°</b><span>${esc(f.lo ?? "—")}°</span></div>
     </div>`).join("");
   return `
     <div class="wx">
       <div class="wx-head">
         <div class="wx-icon">${WEATHER_ICONS[d.icon] || WEATHER_ICONS.cloud}</div>
         <div>
-          <div class="wx-temp">${d.temp}<small>${esc(d.unit)}</small></div>
+          <div class="wx-temp">${esc(d.temp)}<small>${esc(d.unit)}</small></div>
           <div class="wx-cond">${esc(d.condition)}</div>
           <div class="wx-loc">${esc(d.location)}</div>
         </div>
       </div>
       <div class="wx-blocks">
-        <div class="wx-block"><span>FEELS LIKE</span><b>${d.feels_like}${esc(d.unit)}</b></div>
-        <div class="wx-block"><span>WIND</span><b>${d.wind} ${esc(d.wind_unit)}</b></div>
-        <div class="wx-block"><span>HUMIDITY</span><b>${d.humidity}%</b></div>
+        <div class="wx-block"><span>FEELS LIKE</span><b>${esc(d.feels_like)}${esc(d.unit)}</b></div>
+        <div class="wx-block"><span>WIND</span><b>${esc(d.wind)} ${esc(d.wind_unit)}</b></div>
+        <div class="wx-block"><span>HUMIDITY</span><b>${esc(d.humidity)}%</b></div>
       </div>
       <div class="wx-forecast">${days || '<div class="rp-empty">No forecast.</div>'}</div>
     </div>`;
@@ -622,7 +639,7 @@ function renderResearch(d) {
         <div class="rs-name small">${esc(d.runner_up)}</div>
       </div>
       <div class="rs-why">${esc(d.reasoning)}</div>
-      <div class="rs-sources">${d.sources || 0} source${d.sources === 1 ? "" : "s"} checked</div>
+      <div class="rs-sources">${esc(d.sources || 0)} source${d.sources === 1 ? "" : "s"} checked</div>
     </div>`;
 }
 
@@ -679,7 +696,7 @@ function emailHTML() {
       </div>`;
   }
   const rows = messages.length ? messages.map((m, i) => `
-    <div class="em-row" data-idx="${i}">
+    <div class="em-row" data-idx="${i}" role="button" tabindex="0">
       <span class="em-dot ${m.unread ? "unread" : ""}"></span>
       <div class="em-row-main">
         <div class="em-from">${esc(m.from)}</div>
@@ -724,6 +741,13 @@ document.getElementById("resultPanel").addEventListener("click", (e) => {
   }
 });
 
+document.getElementById("resultPanel").addEventListener("keydown", (e) => {
+  if ((e.key === "Enter" || e.key === " ") && e.target.closest(".em-row")) {
+    e.preventDefault();
+    e.target.closest(".em-row").click();
+  }
+});
+
 let lastPanelKey = null;
 
 function apply(s) {
@@ -761,13 +785,17 @@ function apply(s) {
   // lingers a couple of seconds after so there is time to finish reading it,
   // rather than staying parked on screen between questions.
   const said = document.getElementById("said");
+  const stageEl = document.getElementById("stage");
+  const makeRoom = () => stageEl.style.setProperty("--said-h",
+    said.classList.contains("show") ? said.offsetHeight + 28 + "px" : "0px");
   if (s.status === "speaking") {
     said.classList.add("show");
     clearTimeout(said._hideTimer);
   } else if (s.status === "idle") {
     clearTimeout(said._hideTimer);
-    said._hideTimer = setTimeout(() => said.classList.remove("show"), 3000);
+    said._hideTimer = setTimeout(() => { said.classList.remove("show"); makeRoom(); }, 3000);
   }
+  makeRoom();
 
   document.getElementById("sysStatus").textContent = s.connected ? "OPTIMAL" : "OFFLINE";
   document.getElementById("sysStatus").style.color = s.connected ? "var(--green)" : "var(--amber)";
@@ -782,7 +810,7 @@ function apply(s) {
   const log = document.getElementById("log");
   if (s.actions && s.actions.length) {
     log.innerHTML = s.actions.slice(-5).reverse().map((a, i) => `
-      <div class="row"><span>&gt; ${a.name}</span>
+      <div class="row"><span>&gt; ${esc(a.name)}</span>
         <div class="bar"><i style="width:${100 - i * 16}%"></i></div>
       </div>`).join("");
   }
@@ -804,7 +832,7 @@ function apply(s) {
   if (s.actions && s.actions.length) {
     const last = s.actions.slice(-4);
     document.getElementById("timeline").innerHTML = last.map((a) =>
-      `<div>${a.at}<b>${a.name.replace(/_/g, " ").toUpperCase()}</b></div>`).join("");
+      `<div>${esc(a.at)}<b>${esc(a.name.replace(/_/g, " ").toUpperCase())}</b></div>`).join("");
     document.getElementById("track").innerHTML = last.map((_, i) =>
       `<div class="dot" style="left:${(i / Math.max(1, last.length - 1)) * 96}%"></div>`).join("");
     commands = s.commandCount ?? commands;
@@ -823,6 +851,13 @@ function connect() {
   const ws = new WebSocket("ws://127.0.0.1:8766");
   ws.onmessage = (e) => { try { apply(JSON.parse(e.data)); } catch (_) {} };
   ws.onclose = () => {
+    document.getElementById("reactor").className = "reactor offline";
+    document.getElementById("stateBig").textContent = "NO LINK";
+    document.getElementById("stateSub").textContent = "— reconnecting to David —";
+    document.getElementById("net").textContent = "RECONNECTING";
+    document.getElementById("net").style.color = "var(--amber)";
+    document.getElementById("link").textContent = "DOWN";
+    document.getElementById("sysStatus").style.color = "var(--amber)";
     document.getElementById("sysStatus").textContent = "NO LINK";
     setTimeout(connect, 1500);
   };

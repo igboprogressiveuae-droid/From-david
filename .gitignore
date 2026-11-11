@@ -17,5 +17,8 @@ memory.json
 *.wav
 config.json.tmp
 
+# OpenJarvis state (David's own copy; analytics off)
+.openjarvis/
+
 # macOS
 .DS_Store

@@ -52,6 +52,13 @@ import sounddevice as sd
 import websockets
 
 import macos
+try:
+    import jarvis_core
+except ImportError as _e:
+    sys.exit(f"David now needs OpenJarvis ({_e}).\n"
+             "  Run: .venv/bin/pip install -r requirements.txt\n"
+             "  If .venv is Python 3.14 or newer, delete it and start David again "
+             "(OpenJarvis needs Python 3.10 to 3.13).")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 UI = "--ui" in sys.argv or "--hud" in sys.argv
@@ -2236,6 +2243,39 @@ def set_reminder(title, at, day=""):
     return f"reminder set for {when.strftime('%I:%M %p').lstrip('0')} {spoken_day}: {title}"
 
 
+def _briefing_mail():
+    """Unread mail through the Gmail API only. check_email would quietly fall back
+       to driving the browser if the API call failed, and a briefing must not."""
+    found, err = oauth_gmail.search(unread_only=True, hours=16, limit=5)
+    if err:
+        return err
+    if not found:
+        return "no unread mail in the last sixteen hours"
+    return f"{len(found)} unread: " + "; ".join(
+        f"{m['from'].split('<')[0].strip()}, {m['subject']}" for m in found)
+
+
+def morning_briefing():
+    """Everything for "good morning" in one call: the time, the weather, unread
+       mail and the headlines. Each part can fail on its own without losing the
+       rest. Mail is only read through the Gmail API, never off the screen, so a
+       briefing never takes over the mouse."""
+    parts = {}
+    jobs = [("time", what_time), ("weather", get_weather),
+            ("news", lambda: news("top headlines"))]
+    if _HAVE_OAUTH_GMAIL and oauth_gmail.is_connected():
+        jobs.insert(2, ("mail", _briefing_mail))
+    for label, job in jobs:
+        try:
+            parts[label] = _speech(job())
+        except Exception as e:
+            log(f"briefing: {label} failed:", e)
+    if not parts:
+        return "I couldn't gather anything for a briefing just now."
+    return ("Read these out as one short, natural briefing, in this order, "
+            "skipping anything empty:\n" + "\n".join(f"{k.upper()}: {v}" for k, v in parts.items()))
+
+
 def write_file(name, content):
     path = _safe_path("~/Desktop", name)
     with open(path, "w", encoding="utf-8") as f:
@@ -2259,7 +2299,7 @@ ACTIONS = {
     "smart_open": smart_open, "list_installed": list_installed,
     "maximise_window": maximise_window, "minimise_window": minimise_window,
     "snap_window": snap_window, "research": research, "news": news,
-    "get_weather": get_weather,
+    "get_weather": get_weather, "morning_briefing": morning_briefing,
     "describe_screen": describe_screen, "click_on": click_on,
     "list_monitors": list_monitors, "place_active_window": place_active_window,
     "move_window": move_window, "show_image": show_image,
@@ -2291,7 +2331,7 @@ OPENS_A_WINDOW = {
 SLOW_JOBS = {
     "check_email", "check_gmail", "read_email", "open_gmail_message",
     "check_chat", "research", "news", "show_image", "click_on", "describe_screen",
-    "journal", "notion_table",
+    "journal", "notion_table", "morning_briefing",
 }
 
 NEEDS_THE_SCREEN = {
@@ -2558,11 +2598,27 @@ def declarations():
              "at": s("the clock time, like 9am, 9:30 pm or 21:30"),
              "day": s("today, tomorrow, a weekday like friday, or YYYY-MM-DD; blank for the next time that clock time comes round")},
                         "required": ["title", "at"]}},
+        {"name": "morning_briefing", "description": "A spoken morning briefing: the time, the weather, unread email (if Gmail is connected) and the top headlines. Use it when they say good morning, or ask for a briefing, a rundown, or what they missed.",
+         "parameters": {"type": "OBJECT", "properties": {}}},
         {"name": "set_timer", "description": "Set a timer. They will be told out loud when it finishes.",
          "parameters": {"type": "OBJECT", "properties": {"minutes": {"type": "NUMBER", "description": "how long"},
                                                         "label": s("what it is for")},
                         "required": ["minutes"]}},
     ]
+
+
+# OpenJarvis runs every action above: timeouts, a bounded worker pool, events.
+# The spoken confirmation gate and the screen lock stay in Live.run_one.
+ENGINE = jarvis_core.Engine(ACTIONS, declarations(), destructive=DESTRUCTIVE,
+                            slow=SLOW_JOBS, screen=NEEDS_THE_SCREEN,
+                            patient={"connect_gmail", "copy_file", "empty_bin", "morning_briefing"})
+
+
+def _run_action(name, args):
+    """Run one action through OpenJarvis. Hands back a Panel when the action
+       made one (the HUD wants the structure), otherwise the words to say."""
+    text, panel = ENGINE.run(name, args)
+    return panel if panel is not None else text
 
 
 def build_system():
@@ -3151,8 +3207,7 @@ class Live:
         HUD.note_action(name)
         HUD.set(status="thinking")
 
-        fn = ACTIONS.get(name)
-        if not fn:
+        if name not in ACTIONS:
             result = "unknown action"
 
         elif name in NEEDS_THE_SCREEN:
@@ -3170,7 +3225,7 @@ class Live:
             async with self.screen_lock:
                 self.busy_with = name
                 try:
-                    result = await asyncio.to_thread(lambda: fn(**args))
+                    result = await asyncio.to_thread(_run_action, name, args)
                 except Exception as e:
                     log("action failed:", e)
                     result = f"that failed: {e}"
@@ -3181,7 +3236,7 @@ class Live:
             if name in SLOW_JOBS and not self.spoke_this_turn:
                 ack_out_loud()
             try:
-                result = await asyncio.to_thread(lambda: fn(**args))
+                result = await asyncio.to_thread(_run_action, name, args)
             except Exception as e:
                 log("action failed:", e)
                 result = f"that failed: {e}"
@@ -3459,6 +3514,12 @@ def doctor():
     print("\nChecking David's setup\n")
     report(sys.version_info >= (3, 10), f"Python {sys.version.split()[0]}",
            "Install a newer Python: brew install python@3.12")
+    privacy = jarvis_core.privacy_report()
+    report(sys.version_info < (3, 14), "Python is one OpenJarvis supports (3.10 to 3.13)",
+           "Use Python 3.12: brew install python@3.12, then rebuild the .venv")
+    report(not privacy["analytics"] and not privacy["telemetry"],
+           f"OpenJarvis analytics off ({len(ENGINE.names())} actions run through it)",
+           "Delete .openjarvis/ and start David again; it rewrites the config with analytics off")
 
     key = CFG.get("api_key")
     if not key:
