@@ -74,6 +74,12 @@
   .dot.ok { background: var(--green); box-shadow: 0 0 8px rgba(52, 211, 107, .6); }
   .dot.warn { background: var(--yellow); }
   .dot.brainy { background: var(--accent2); box-shadow: 0 0 8px rgba(139, 92, 246, .6); }
+  .brain-switch { display: inline-flex; height: 30px; padding: 2px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-1); }
+  .brain-switch button { display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border: 0; border-radius: 999px;
+                         background: none; color: var(--text3); font: inherit; font-size: 12px; cursor: pointer; }
+  .brain-switch button:hover:not(:disabled) { color: var(--text); }
+  .brain-switch button[aria-pressed="true"] { background: var(--accent2-wash); color: var(--accent2-ink); box-shadow: inset 0 0 0 1px rgba(139, 92, 246, .45); }
+  .brain-switch button:disabled { opacity: .4; cursor: default; }
   .top-center { display: flex; justify-content: center; align-items: center; gap: 14px; min-width: 0; }
   .clock { font-family: var(--mono); font-size: 13px; color: var(--text2); letter-spacing: .5px; }
   .date { font-size: 12px; color: var(--text3); }
@@ -320,7 +326,10 @@
 <header class="top">
   <div class="top-left">
     <div class="brand"><span class="brand-mark">D</span><span class="brand-text">DAVID</span></div>
-    <span class="chip" id="brainChip" title="The thinking brain behind typed chat, Telegram and jobs"><span class="dot brainy"></span><span id="brainName">—</span></span>
+    <div class="brain-switch" id="brainChip" role="group" aria-label="Thinking brain for typed chat, Telegram and jobs">
+      <button type="button" data-brain="gemini" aria-pressed="false">David</button>
+      <button type="button" data-brain="claude" aria-pressed="false">Claude</button>
+    </div>
   </div>
   <div class="top-center">
     <span class="chip"><span class="dot" id="linkDot"></span><span id="linkText">Starting</span></span>
@@ -702,11 +711,32 @@ async function refreshSide() {
       return row;
     }) : [el("div", "empty", "No jobs. Try “every weekday at 7am, check gold news”.")]));
   } catch (_) { $("jobs").replaceChildren(el("div", "empty", "Couldn't read the jobs.")); }
+  await refreshBrain();
+}
+
+// ---------- the David | Claude switch: which brain answers typed chat, Telegram and jobs ----------
+// "David" is his own Gemini brain. Voice always stays on Gemini Live.
+const brainButtons = [...document.querySelectorAll("#brainChip button")];
+async function refreshBrain() {
   try {
-    const b = await api("/api/brain"), cur = b.brains.find((x) => x.name === b.current);
-    $("brainName").textContent = b.current[0].toUpperCase() + b.current.slice(1) + (cur?.model ? " · " + cur.model : "");
+    const b = await api("/api/brain");
+    brainButtons.forEach((btn) => {
+      const info = b.brains.find((x) => x.name === btn.dataset.brain);
+      btn.setAttribute("aria-pressed", String(b.current === btn.dataset.brain));
+      btn.disabled = !info || !!info.problem;
+      btn.title = !info ? "" : info.problem || `Thinking with ${info.model} (typed chat, Telegram and jobs; voice stays on Gemini Live)`;
+    });
   } catch (_) {}
 }
+brainButtons.forEach((btn) => btn.addEventListener("click", async () => {
+  if (btn.getAttribute("aria-pressed") === "true") return;
+  brainButtons.forEach((b) => (b.disabled = true));
+  try {
+    await api("/api/brain", { method: "POST", headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ name: btn.dataset.brain }) });
+  } catch (_) {}
+  await refreshBrain();
+}));
 refreshSide();
 setInterval(refreshSide, 30000);
 
