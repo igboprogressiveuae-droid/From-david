@@ -82,6 +82,9 @@ class DashboardApi(unittest.TestCase):
         for bad in ({"Content-Type": "text/plain"}, {"Host": "evil.example:8765"},
                     {"Origin": "https://evil.example"}, {"Content-Type": "application/x-www-form-urlencoded"}):
             self.assertFalse(david_live.dashboard_post_ok({**ok, **bad}), bad)
+        self.assertTrue(david_live.host_ok({"Host": "localhost:8765"}))
+        self.assertFalse(david_live.host_ok({"Host": "rebound.example:8765"}))
+        self.assertFalse(david_live.host_ok({}))
 
     def test_unknown_paths_are_left_alone(self):
         self.assertIsNone(api.handle("GET", "/api/nope"))

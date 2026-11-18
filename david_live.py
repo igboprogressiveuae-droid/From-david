@@ -74,12 +74,16 @@ WS_URL = ("wss://generativelanguage.googleapis.com/ws/"
 # the session
 # ----------------------------------------------------------------------------
 
+def host_ok(headers):
+    """A rebound domain name pointing at 127.0.0.1 still carries its own Host —
+       without this, any website could read your notes and jobs from here."""
+    return headers.get("Host", "") in ("127.0.0.1:8765", "localhost:8765")
+
+
 def dashboard_post_ok(headers):
     """The chat box can run any tool, so its endpoints take only our own page's requests.
-       Another site can't send JSON here without a preflight we never answer, and a
-       rebound domain name pointing at 127.0.0.1 still carries its own Host."""
-    return (headers.get("Content-Type", "").startswith("application/json")
-            and headers.get("Host", "") in ("127.0.0.1:8765", "localhost:8765")
+       Another site can't send JSON here without a preflight we never answer."""
+    return (headers.get("Content-Type", "").startswith("application/json") and host_ok(headers)
             and headers.get("Origin") in (None, "http://127.0.0.1:8765", "http://localhost:8765"))
 
 
@@ -159,6 +163,8 @@ class Hud:
                 self.wfile.write(body)
 
             def do_GET(self):
+                if not host_ok(self.headers):
+                    return self._json({"ok": False, "error": "forbidden"}, 403)
                 if self.path == "/api/display/mode":
                     return self._json({"mode": CFG.get("display_mode", "full")})
                 if self.path == "/api/gmail/status":
