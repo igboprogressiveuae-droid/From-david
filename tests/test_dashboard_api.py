@@ -75,6 +75,14 @@ class DashboardApi(unittest.TestCase):
         self.assertEqual(len(data["pages"]), 1)
         self.assertIn("enabled", api.handle("GET", "/api/telegram")[1])
 
+    def test_only_our_own_page_may_post(self):
+        import david_live
+        ok = {"Content-Type": "application/json", "Host": "127.0.0.1:8765", "Origin": "http://127.0.0.1:8765"}
+        self.assertTrue(david_live.dashboard_post_ok(ok))
+        for bad in ({"Content-Type": "text/plain"}, {"Host": "evil.example:8765"},
+                    {"Origin": "https://evil.example"}, {"Content-Type": "application/x-www-form-urlencoded"}):
+            self.assertFalse(david_live.dashboard_post_ok({**ok, **bad}), bad)
+
     def test_unknown_paths_are_left_alone(self):
         self.assertIsNone(api.handle("GET", "/api/nope"))
         self.assertIsNone(api.handle("POST", "/api/jobs"))

@@ -74,6 +74,15 @@ WS_URL = ("wss://generativelanguage.googleapis.com/ws/"
 # the session
 # ----------------------------------------------------------------------------
 
+def dashboard_post_ok(headers):
+    """The chat box can run any tool, so its endpoints take only our own page's requests.
+       Another site can't send JSON here without a preflight we never answer, and a
+       rebound domain name pointing at 127.0.0.1 still carries its own Host."""
+    return (headers.get("Content-Type", "").startswith("application/json")
+            and headers.get("Host", "") in ("127.0.0.1:8765", "localhost:8765")
+            and headers.get("Origin") in (None, "http://127.0.0.1:8765", "http://localhost:8765"))
+
+
 class Hud:
     """Serves the interface and pushes live state to it."""
 
@@ -231,6 +240,8 @@ class Hud:
                     except Exception:
                         pass
                     return self._json({"ok": True, "result": result})
+                if not dashboard_post_ok(self.headers):
+                    return self._json({"ok": False, "error": "forbidden"}, 403)
                 try:
                     body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
                 except ValueError:
