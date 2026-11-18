@@ -32,7 +32,7 @@ def token():
 
 def owner_id():
     raw = os.environ.get("TELEGRAM_OWNER_ID", "").strip()
-    return int(raw) if raw.lstrip("-").isdigit() else None
+    return int(raw) if raw.isdigit() else None    # a person's id is positive; groups' are negative
 
 
 def enabled():
@@ -80,10 +80,13 @@ class Bot:
 
     def handle(self, message):
         """One incoming message. Returns the reply sent, or None if it was ignored."""
-        chat = (message.get("chat") or {}).get("id")
+        chat_info = message.get("chat") or {}
+        chat, sender = chat_info.get("id"), (message.get("from") or {}).get("id")
         text = (message.get("text") or "").strip()
         owner = owner_id()
-        if chat is None:
+        # Only a one-to-one chat with a person: in a group, anyone in it could talk to David.
+        if chat is None or chat_info.get("type") != "private" or sender != chat:
+            log(f"Telegram: ignored a message that was not a private chat ({chat_info.get('type')})")
             return None
         if owner is None:
             reply = (f"This is David. Your Telegram id is {chat}. Put TELEGRAM_OWNER_ID={chat} "
