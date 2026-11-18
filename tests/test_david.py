@@ -19,9 +19,10 @@ sys.path.insert(0, ROOT)
 os.environ.setdefault("GEMINI_API_KEY", "test-key-not-real")
 
 import david_live as d  # noqa: E402
+import tools as t  # noqa: E402
 import macos  # noqa: E402
 
-d.CFG["spoken_acknowledgement"] = False     # a slow job must not say "On it." mid-test
+t.CFG["spoken_acknowledgement"] = False     # a slow job must not say "On it." mid-test
 
 
 class RefusalKind(unittest.TestCase):
@@ -50,11 +51,11 @@ class RefusalKind(unittest.TestCase):
 class Confirmation(unittest.TestCase):
     def test_yes_is_whole_words(self):
         for said in ("yes", "Yeah, go ahead", "go ahead now", "sure, do it"):
-            self.assertTrue(d._is_yes(said), said)
+            self.assertTrue(t._is_yes(said), said)
 
     def test_anything_doubtful_is_a_no(self):
         for said in ("no", "yes, don’t", "not now", "yes wait", "yesterday", "I know", ""):
-            self.assertFalse(d._is_yes(said), said)
+            self.assertFalse(t._is_yes(said), said)
 
     def test_destructive_action_needs_a_later_yes(self):
         live = d.Live()
@@ -74,13 +75,13 @@ class Confirmation(unittest.TestCase):
 class Repeats(unittest.TestCase):
     def setUp(self):
         self.calls = []
-        self.saved = dict(d.ACTIONS)
+        self.saved = dict(t.ACTIONS)
         for name in ("scroll", "check_email"):
-            d.ACTIONS[name] = lambda _n=name, **kw: self.calls.append((_n, kw)) or "ok"
+            t.ACTIONS[name] = lambda _n=name, **kw: self.calls.append((_n, kw)) or "ok"
 
     def tearDown(self):
-        d.ACTIONS.clear()
-        d.ACTIONS.update(self.saved)
+        t.ACTIONS.clear()
+        t.ACTIONS.update(self.saved)
 
     def run_calls(self, *calls):
         live = d.Live()
@@ -107,32 +108,33 @@ class Repeats(unittest.TestCase):
 class Clicking(unittest.TestCase):
     def test_point_maps_onto_the_screen_that_was_captured(self):
         # a second screen to the right of a 1792-wide main one
-        self.assertEqual(d._point_on_screen([500, 500], (1792, 0, 3712, 1080)), (2752, 540))
-        self.assertEqual(d._point_on_screen([0, 1000], (0, 0, 1792, 1120)), (1792, 0))
+        self.assertEqual(t._point_on_screen([500, 500], (1792, 0, 3712, 1080)), (2752, 540))
+        self.assertEqual(t._point_on_screen([0, 1000], (0, 0, 1792, 1120)), (1792, 0))
 
     def test_missing_permission_is_said_not_hidden(self):
         if macos.can_see_screen():
             self.skipTest("Screen Recording is granted here")
-        self.assertEqual(d.describe_screen(), macos.NO_SCREEN)
+        self.assertEqual(t.describe_screen(), macos.NO_SCREEN)
 
 
 class Setup(unittest.TestCase):
     def test_every_declared_tool_exists(self):
-        declared = {t["name"] for t in d.declarations()}
-        self.assertEqual(declared - set(d.ACTIONS), set())
-        self.assertEqual(set(d.ACTIONS) - declared, set())
-        self.assertEqual(d.REPEATABLE - set(d.ACTIONS), set())
+        declared = {t["name"] for t in t.declarations()}
+        self.assertEqual(declared - set(t.ACTIONS), set())
+        self.assertEqual(set(t.ACTIONS) - declared, set())
+        self.assertEqual(t.REPEATABLE - set(t.ACTIONS), set())
 
     def test_prompt_is_personalised(self):
-        self.assertNotIn("Ibans", d.SYSTEM)
-        self.assertNotIn("{name}", d.SYSTEM)
-        self.assertIn(d.CFG["owner_name"], d.SYSTEM)
+        self.assertNotIn("Ibans", t.SYSTEM)
+        self.assertNotIn("{name}", t.SYSTEM)
+        self.assertIn(t.CFG["owner_name"], t.SYSTEM)
 
     def test_no_windows_calls_left(self):
-        with open(os.path.join(ROOT, "david_live.py"), encoding="utf-8") as f:
-            source = f.read().lower()
-        for word in ("windll", "powershell", "startfile", "taskkill", "imagegrab"):
-            self.assertFalse(word in source, f"{word} is still in david_live.py")
+        for name in ("david_live.py", "tools.py"):
+            with open(os.path.join(ROOT, name), encoding="utf-8") as f:
+                source = f.read().lower()
+            for word in ("windll", "powershell", "startfile", "taskkill", "imagegrab"):
+                self.assertFalse(word in source, f"{word} is still in {name}")
 
     def test_config_holds_no_keys(self):
         with open(os.path.join(ROOT, "config.json"), encoding="utf-8") as f:
@@ -146,24 +148,24 @@ class Setup(unittest.TestCase):
             self.assertIn(name, ignored)
 
     def test_env_file_is_read_without_overriding_the_shell(self):
-        saved = d.HERE
+        saved = t.HERE
         with tempfile.TemporaryDirectory() as tmp:
             with open(os.path.join(tmp, ".env"), "w") as f:
                 f.write("# a comment\nDAVID_TEST_A='from file'\nDAVID_TEST_B=from file\n")
             os.environ["DAVID_TEST_B"] = "from shell"
             try:
-                d.HERE = tmp
-                d._load_env_file()
+                t.HERE = tmp
+                t._load_env_file()
                 self.assertEqual(os.environ["DAVID_TEST_A"], "from file")
                 self.assertEqual(os.environ["DAVID_TEST_B"], "from shell")
             finally:
-                d.HERE = saved
+                t.HERE = saved
                 os.environ.pop("DAVID_TEST_A", None)
                 os.environ.pop("DAVID_TEST_B", None)
 
     def test_research_cache_key_collapses_spaces(self):
-        self.assertEqual(d._research_cache_key("Gold   price", " cheap"),
-                         d._research_cache_key("gold price", " cheap"))
+        self.assertEqual(t._research_cache_key("Gold   price", " cheap"),
+                         t._research_cache_key("gold price", " cheap"))
 
 
 class Microphone(unittest.TestCase):
@@ -202,25 +204,25 @@ class GeminiCalls(unittest.TestCase):
 
     def test_thinking_level_is_dropped_if_the_model_refuses_it(self):
         self.fake((400, "Invalid argument: thinking_level is not supported"), (200,))
-        body = {"generationConfig": {"maxOutputTokens": 5, **d._thinking("low")}}
-        self.assertEqual(d._gemini_post(body).status_code, 200)
+        body = {"generationConfig": {"maxOutputTokens": 5, **t._thinking("low")}}
+        self.assertEqual(t._gemini_post(body).status_code, 200)
         self.assertIn("thinkingConfig", self.sent[0]["json"]["generationConfig"])
         self.assertEqual(self.sent[1]["json"]["generationConfig"], {"maxOutputTokens": 5})
 
     def test_other_errors_are_not_retried(self):
         self.fake((400, "API key not valid"))
-        body = {"generationConfig": d._thinking("low")}
-        self.assertEqual(d._gemini_post(body).status_code, 400)
+        body = {"generationConfig": t._thinking("low")}
+        self.assertEqual(t._gemini_post(body).status_code, 400)
         self.assertEqual(len(self.sent), 1)
 
     def test_key_goes_in_a_header_never_the_url(self):
         self.fake((200,))
-        d._gemini_post({})
-        self.assertNotIn(d.CFG["api_key"], self.sent[0]["url"])
-        self.assertEqual(self.sent[0]["headers"]["x-goog-api-key"], d.CFG["api_key"])
+        t._gemini_post({})
+        self.assertNotIn(t.CFG["api_key"], self.sent[0]["url"])
+        self.assertEqual(self.sent[0]["headers"]["x-goog-api-key"], t.CFG["api_key"])
 
     def test_no_thinking_level_means_no_setting(self):
-        self.assertEqual(d._thinking(""), {})
+        self.assertEqual(t._thinking(""), {})
 
 
 class Browser(unittest.TestCase):
@@ -240,26 +242,26 @@ class Reminders(unittest.TestCase):
     def test_clock_times(self):
         for said, clock in (("9", (9, 0)), ("9am", (9, 0)), ("9:30 p.m.", (21, 30)),
                             ("21:30", (21, 30)), ("12 am", (0, 0)), ("12pm", (12, 0))):
-            self.assertEqual(d._parse_clock(said), clock, said)
+            self.assertEqual(t._parse_clock(said), clock, said)
         for said in ("25:00", "9:75", "noonish", ""):
-            self.assertIsNone(d._parse_clock(said), said)
+            self.assertIsNone(t._parse_clock(said), said)
 
     def test_no_day_means_the_next_time_it_comes_round(self):
-        when, _ = d._resolve_when("9am", "", self.NOW)
+        when, _ = t._resolve_when("9am", "", self.NOW)
         self.assertEqual((when.day, when.hour), (16, 9))
-        when, _ = d._resolve_when("1am", "", self.NOW)
+        when, _ = t._resolve_when("1am", "", self.NOW)
         self.assertEqual((when.day, when.hour), (17, 1))
 
     def test_days(self):
-        self.assertEqual(d._resolve_when("9am", "tomorrow", self.NOW)[0].day, 17)
-        self.assertEqual(d._resolve_when("9am", "Friday", self.NOW)[0].day, 18)
-        self.assertEqual(d._resolve_when("1am", "wednesday", self.NOW)[0].day, 23)
-        self.assertEqual(d._resolve_when("9am", "2026-10-01", self.NOW)[0].month, 10)
+        self.assertEqual(t._resolve_when("9am", "tomorrow", self.NOW)[0].day, 17)
+        self.assertEqual(t._resolve_when("9am", "Friday", self.NOW)[0].day, 18)
+        self.assertEqual(t._resolve_when("1am", "wednesday", self.NOW)[0].day, 23)
+        self.assertEqual(t._resolve_when("9am", "2026-10-01", self.NOW)[0].month, 10)
 
     def test_impossible_requests_say_why(self):
-        self.assertIn("already passed", d._resolve_when("1am", "today", self.NOW)[1])
-        self.assertIn("which day", d._resolve_when("9am", "someday", self.NOW)[1])
-        self.assertIn("what time", d._resolve_when("soon", "", self.NOW)[1])
+        self.assertIn("already passed", t._resolve_when("1am", "today", self.NOW)[1])
+        self.assertIn("which day", t._resolve_when("9am", "someday", self.NOW)[1])
+        self.assertIn("what time", t._resolve_when("soon", "", self.NOW)[1])
 
     def test_reminder_script(self):
         script = macos.reminder_script('Call "Mum"', self.NOW.replace(hour=9, minute=30))
@@ -330,7 +332,7 @@ class Mac(unittest.TestCase):
         screens = macos.displays()
         self.assertGreaterEqual(len(screens), 1)
         self.assertTrue(all(s["right"] > s["left"] and s["bottom"] > s["top"] for s in screens))
-        self.assertIsNotNone(d._main_screen(screens))
+        self.assertIsNotNone(t._main_screen(screens))
 
     def test_system_numbers_are_sane(self):
         self.assertGreater(macos.cpu_ticks()[1], 0)
@@ -340,7 +342,7 @@ class Mac(unittest.TestCase):
         self.assertTrue(percent is None or 0 <= percent <= 100)
 
     def test_disks_and_apps(self):
-        self.assertIn("GB", d._speech(d.list_drives()))
+        self.assertIn("GB", t._speech(t.list_drives()))
         self.assertIn("safari", macos.installed_apps())
 
     def test_applescript_strings_are_escaped(self):
