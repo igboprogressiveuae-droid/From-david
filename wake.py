@@ -68,12 +68,23 @@ class Listener:
         if not self.rec.AcceptWaveform(pcm):
             return False
         text = normalise(json.loads(self.rec.Result()).get("text", ""))
-        if self.phrase and f" {self.phrase} " in f" {text} ":
+        if self.phrase and self._matches(text):
             self.reset()
             return True
         if text and CFG.get("wake_debug"):     # off by default: it prints what the room says
             log(f'(asleep) heard "{text}"')
         return False
+
+    def _matches(self, text):
+        """The phrase, or its first and last words with any one middle word between:
+           the model hears a mumbled "wake up David" as "wake of David"."""
+        words = self.phrase.split()
+        if f" {self.phrase} " in f" {text} ":
+            return True
+        if len(words) < 3:
+            return False
+        middle = r"(?: \S+){0,%d}" % (len(words) - 2)
+        return re.search(rf"\b{re.escape(words[0])}{middle} {re.escape(words[-1])}\b", text) is not None
 
     def reset(self):
         """Start fresh: Vosk's own Reset() keeps tuning to the last voice it heard,

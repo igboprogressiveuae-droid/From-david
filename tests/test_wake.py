@@ -24,7 +24,7 @@ class FakeRecognizer:
     """Says what it 'heard' once each script entry's audio arrives."""
 
     def __init__(self, script):
-        self.script = list(script)       # [(finished?, text)] per chunk
+        self.script = script             # [(finished?, text)] per chunk, shared by fresh recognizers
         self.last = ""
 
     def AcceptWaveform(self, pcm):
@@ -48,6 +48,11 @@ class Listener(unittest.TestCase):
         lst, _ = self.listener([(False, "wake up david"), (True, "wake up daniel"),
                                 (True, "wake up davidson"), (True, "okay wake up david please")])
         self.assertEqual([lst.heard(b"x") for _ in range(4)], [False, False, False, True])
+
+    def test_one_misheard_middle_word_still_wakes(self):
+        lst, _ = self.listener([(True, "the testing wake of david"), (True, "wake david"),
+                                (True, "wake up the david"), (True, "make up david"), (True, "the wake of the")])
+        self.assertEqual([lst.heard(b"x") for _ in range(5)], [True, True, False, False, False])
 
     def test_a_wake_starts_a_fresh_recognizer(self):
         lst, made = self.listener([(True, "wake up david")])

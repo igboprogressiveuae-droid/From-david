@@ -99,6 +99,7 @@ class Hud:
             "actionsReady": True, "actions": [], "commandCount": 0,
             "cpu": 0, "ram": 0, "disk": 0, "battery": 0,
             "panel": None,   # the last typed tool result, if any — sticks until replaced
+            "turns": [],     # the spoken conversation, for the interface's chat column
         }
         # micLevel changes on basically every audio callback, so serve()
         # would otherwise re-encode and re-broadcast the whole state —
@@ -108,6 +109,11 @@ class Hud:
 
     def set(self, **kw):
         self.state.update(kw)
+        self._dirty = True
+
+    def note_turn(self, who, text):
+        self.state["turns"] = (self.state["turns"] + [
+            {"who": who, "text": text.strip()[:4000], "at": datetime.now().strftime("%I:%M %p")}])[-30:]
         self._dirty = True
 
     def note_action(self, name):
@@ -543,6 +549,7 @@ class Live:
                             lastLine=(self.said or self.you_said).strip()[:4000])
                     if self.you_said.strip():
                         print(f"    you: {self.you_said.strip()}", flush=True)
+                        HUD.note_turn("you", self.you_said)
                         BRAIN.log_turn("voice", CFG.get("owner_name") or "you", self.you_said)
                         # Kept separately from the buffer below so a destructive
                         # action can check what he actually just said, rather
@@ -550,6 +557,7 @@ class Live:
                         self.gate.heard(self.you_said.strip())
                     if self.said.strip():
                         print(f"  David: {self.said.strip()}", flush=True)
+                        HUD.note_turn("david", self.said)
                         BRAIN.log_turn("voice", "David", self.said)
                     self.you_said = self.said = ""
                     self.spoke_this_turn = False
@@ -875,7 +883,7 @@ async def wait_for_wake(live, listener):
        or until a reminder, timer or job has something to say."""
     live.loop = asyncio.get_running_loop()
     tools.NOTIFY = lambda text: live.loop.call_soon_threadsafe(live.notices.put_nowait, text)
-    HUD.set(status="asleep", connected=False, micArmed=False)
+    HUD.set(status="asleep", connected=False, micArmed=False, wakePhrase=CFG.get("wake_phrase", ""))
     log(f"asleep — say \"{CFG.get('wake_phrase')}\" to wake me")
     chunks, silence = queue.Queue(), SilenceWatch()
     listener.reset()

@@ -2,578 +2,476 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>DAVID OS</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>David</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700&family=Montserrat:wght@600;700&display=swap" />
 <style>
+  /* Javis OS's palette: violet-black glass, orange for David's voice, violet for his thinking. */
   :root {
-    --bg: #03070C;
-    --panel: rgba(8, 20, 34, .55);
-    --edge: rgba(56, 170, 240, .28);
-    --cyan: #35B8F0;
-    --cyan-bright: #7FE4FF;
-    --ice: #CFEBFA;
-    --dim: #4E7893;
-    --green: #35E08A;
-    --amber: #E8A33D;
-    --mono: ui-monospace, "SF Mono", Menlo, "Cascadia Mono", Consolas, monospace;
-    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    color-scheme: dark;
+    --bg: #0e0e16;
+    --bg2: #181822;
+    --bg3: #22222e;
+    --border: #36364c;
+    --hairline: rgba(255, 255, 255, .08);
+    --surface-1: rgba(255, 255, 255, .025);
+    --surface-2: rgba(255, 255, 255, .052);
+    --surface-3: rgba(255, 255, 255, .085);
+    --accent: #ff7a3c;
+    --accent-ink: #ffab81;
+    --accent-wash: rgba(255, 101, 45, .08);
+    --accent-line: rgba(255, 130, 67, .32);
+    --accent2: #8b5cf6;
+    --accent2-ink: #d5b5ff;
+    --accent2-wash: rgba(139, 92, 246, .1);
+    --text: #f3f3fb;
+    --text2: #c0c0da;
+    --text3: #9a9ab6;
+    --green: #34d36b;
+    --yellow: #f0c020;
+    --red: #f4565a;
+    --font: "Be Vietnam Pro", -apple-system, "Segoe UI", system-ui, sans-serif;
+    --brand: "Montserrat", var(--font);
+    --mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
   }
 
   * { box-sizing: border-box; }
-  html, body { height: 100%; margin: 0; overflow: hidden; }
-
+  html, body { height: 100%; margin: 0; }
   body {
-    background:
-      radial-gradient(circle at 50% 62%, rgba(20, 90, 150, .22), transparent 60%),
-      var(--bg);
-    color: var(--ice);
-    font-family: var(--sans);
-    display: grid;
-    grid-template-rows: 58px 1fr;
-    gap: 10px;
-    padding: 10px;
-  }
-
-  /* faint scanlines over everything */
-  body::after {
-    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 99;
-    background: repeating-linear-gradient(180deg,
-      rgba(53,184,240,.035) 0 1px, transparent 1px 3px);
-  }
-
-  .panel {
-    position: relative;
-    background: var(--panel);
-    border: 1px solid var(--edge);
-    padding: 12px 14px;
-    backdrop-filter: blur(3px);
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 14px;
+    line-height: 1.5;
     overflow: hidden;
+    display: grid;
+    grid-template-rows: 52px minmax(0, 1fr) auto;
   }
-  .panel::before, .panel::after {
-    content: ""; position: absolute; width: 12px; height: 12px; pointer-events: none;
-    border-color: var(--cyan);
-  }
-  .panel::before { top: -1px; left: -1px; border-top: 2px solid; border-left: 2px solid; }
-  .panel::after { bottom: -1px; right: -1px; border-bottom: 2px solid; border-right: 2px solid; }
-
-  h2 {
-    margin: 0 0 10px;
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: .22em;
-    text-transform: uppercase;
-    color: var(--ice);
-    padding-bottom: 7px;
-    border-bottom: 1px solid rgba(56,170,240,.18);
-  }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   /* ---------- top bar ---------- */
-  header {
-    display: grid;
-    grid-template-columns: 260px 1fr auto 1fr 300px;
-    align-items: center;
-    gap: 14px;
-    border: 1px solid var(--edge);
-    background: var(--panel);
-    padding: 0 16px;
-    position: relative;
+  .top {
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 16px;
+    padding: 0 20px; background: var(--bg2); border-bottom: 1px solid var(--border);
   }
-  .brand { display: flex; align-items: center; gap: 12px; }
-  .brand .mark {
-    width: 34px; height: 34px; border: 2px solid var(--cyan);
-    display: grid; place-items: center; font-family: var(--mono);
-    font-size: 15px; color: var(--cyan-bright);
-    box-shadow: 0 0 14px rgba(53,184,240,.35), inset 0 0 12px rgba(53,184,240,.2);
+  .top-left, .top-right { display: flex; align-items: center; gap: 12px; }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand-mark {
+    width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    font-family: var(--brand); font-weight: 700; font-size: 13px; color: #fff;
   }
-  .brand b { font-size: 19px; letter-spacing: .06em; display: block; line-height: 1.05; }
-  .brand span { font-family: var(--mono); font-size: 9px; color: var(--dim); letter-spacing: .18em; }
-
-  .stat { font-family: var(--mono); font-size: 9px; letter-spacing: .18em; color: var(--dim); }
-  .stat b { display: block; font-size: 12px; letter-spacing: .12em; color: var(--green); margin-top: 3px; }
-  .stat.right { text-align: right; }
-
-  .clock { text-align: center; font-family: var(--mono); }
-  .clock .date { font-size: 9px; letter-spacing: .2em; color: var(--dim); }
-  .clock .time { font-size: 24px; letter-spacing: .08em; color: #fff; text-shadow: 0 0 18px rgba(53,184,240,.5); }
-
-  .company { text-align: right; }
-  .company b { font-size: 15px; font-style: italic; letter-spacing: .02em; }
-  .company span { display: block; font-family: var(--mono); font-size: 8px; letter-spacing: .22em; color: var(--dim); }
-
-  /* ---------- layout ---------- */
-  main { display: grid; grid-template-columns: 300px 1fr 320px; gap: 10px; min-height: 0; }
-  aside { display: grid; gap: 10px; min-height: 0; }
-  aside.left { grid-template-rows: 200px 1fr 172px 150px; }
-  aside.right { grid-template-rows: 190px 1fr 190px 176px; }
-
-  /* ---------- waveform ---------- */
-  .wave { display: flex; align-items: center; gap: 2px; height: 78px; }
-  .wave i {
-    flex: 1; background: linear-gradient(180deg, var(--cyan-bright), var(--cyan));
-    height: 3px; border-radius: 1px; transition: height .07s linear;
-    box-shadow: 0 0 6px rgba(53,184,240,.7);
+  .brand-text { font-family: var(--brand); font-weight: 700; font-size: 15px; letter-spacing: 3px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px;
+    border: 1px solid var(--border); border-radius: 999px; background: var(--surface-1);
+    font-size: 12px; color: var(--text2); white-space: nowrap; text-decoration: none;
   }
-  .caption { margin-top: 12px; font-size: 13px; color: var(--cyan-bright); }
-  .caption.idle { color: var(--dim); }
+  a.chip:hover { background: var(--surface-3); color: var(--text); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text3); flex: none; }
+  .dot.ok { background: var(--green); box-shadow: 0 0 8px rgba(52, 211, 107, .6); }
+  .dot.warn { background: var(--yellow); }
+  .dot.brainy { background: var(--accent2); box-shadow: 0 0 8px rgba(139, 92, 246, .6); }
+  .top-center { display: flex; justify-content: center; align-items: center; gap: 14px; min-width: 0; }
+  .clock { font-family: var(--mono); font-size: 13px; color: var(--text2); letter-spacing: .5px; }
+  .date { font-size: 12px; color: var(--text3); }
+  .company { text-align: right; line-height: 1.15; }
+  .company b { display: block; font-family: var(--brand); font-size: 11px; letter-spacing: 2px; color: var(--text2); }
+  .company span { font-size: 9px; letter-spacing: 2px; color: var(--text3); }
 
-  /* ---------- action log ---------- */
-  .log { display: flex; flex-direction: column; gap: 11px; overflow: hidden; }
-  .log .row { font-size: 12px; }
-  .log .row span { color: var(--ice); }
-  .log .row .bar { height: 3px; background: rgba(56,170,240,.15); margin-top: 6px; }
-  .log .row .bar i { display: block; height: 100%; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
-  .log .empty { color: var(--dim); font-size: 12px; }
-
-  /* ---------- dials ---------- */
-  .dials { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; place-items: center; }
-  .dial { width: 78px; height: 78px; position: relative; }
-  .dial svg { transform: rotate(-90deg); }
-  .dial .val {
-    position: absolute; inset: 0; display: grid; place-content: center; text-align: center;
-    font-family: var(--mono);
+  /* ---------- three columns ---------- */
+  .body { display: grid; grid-template-columns: 280px minmax(0, 1fr) 340px; min-height: 0; }
+  .side { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .side.left { border-right: 1px solid var(--border); }
+  .side.right { border-left: 1px solid var(--border); }
+  .section { padding: 16px 18px; border-bottom: 1px solid var(--hairline); min-height: 0; }
+  .section.grow { flex: 1; display: flex; flex-direction: column; }
+  .label {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    font-size: 11px; font-weight: 600; letter-spacing: 2px; color: var(--text3);
+    text-transform: uppercase; margin-bottom: 12px;
   }
-  .dial .val small { display: block; font-size: 8px; letter-spacing: .16em; color: var(--dim); }
-  .dial .val b { font-size: 15px; }
+  .label .count { font-family: var(--mono); letter-spacing: 0; color: var(--accent-ink); font-weight: 500; }
+  .empty { color: var(--text3); font-size: 12.5px; }
+  .scroll { overflow-y: auto; min-height: 0; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
 
-  /* ---------- data stream ---------- */
-  .stream {
-    font-family: var(--mono); font-size: 9px; line-height: 1.35;
-    color: rgba(53,184,240,.5); word-break: break-all; overflow: hidden; height: 100%;
+  .facts { display: flex; flex-direction: column; gap: 8px; }
+  .fact {
+    padding: 8px 10px; border-radius: 8px; background: var(--surface-1); border: 1px solid var(--hairline);
+    font-size: 12.5px; color: var(--text2);
+  }
+  .pages { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .page-tag {
+    font-size: 11.5px; padding: 3px 9px; border-radius: 999px;
+    background: var(--accent2-wash); color: var(--accent2-ink); border: 1px solid rgba(139, 92, 246, .25);
   }
 
-  /* ---------- centre ---------- */
-  .centre { display: grid; grid-template-rows: auto 1fr auto; place-items: center; gap: 6px; min-height: 0; width: 100%; }
-  .state-line { text-align: center; }
-  .state-line b {
-    font-size: 26px; letter-spacing: .16em; text-transform: uppercase;
-    text-shadow: 0 0 24px rgba(53,184,240,.55);
-  }
-  .state-line span { display: block; font-family: var(--mono); font-size: 10px; letter-spacing: .3em; color: var(--dim); margin-top: 4px; }
+  .job { padding: 8px 0; border-bottom: 1px solid var(--hairline); }
+  .job:last-child { border-bottom: 0; }
+  .job b { display: block; font-weight: 500; font-size: 12.5px; color: var(--text); }
+  .job small { color: var(--text3); font-size: 11.5px; }
 
-  /* the reactor and the results panel share this box: the reactor owns it
-     alone until a tool hands back something worth showing, then it shrinks
-     into the corner and the panel takes the room it gave up. */
-  .stage { position: relative; width: 100%; height: 100%; min-height: 0; }
+  .meters { display: grid; gap: 10px; }
+  .meter { display: grid; grid-template-columns: 54px 1fr 38px; align-items: center; gap: 10px; font-size: 11.5px; color: var(--text3); }
+  .meter .track { height: 4px; border-radius: 4px; background: var(--surface-3); overflow: hidden; }
+  .meter .track i { display: block; height: 100%; width: 0; border-radius: 4px; background: var(--accent2); transition: width .6s ease; }
+  .meter .track i.hot { background: var(--accent); }
+  .meter b { font-family: var(--mono); font-weight: 500; color: var(--text2); text-align: right; }
+  .senses { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .sense { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text2); padding: 3px 9px; border-radius: 999px; background: var(--surface-1); border: 1px solid var(--hairline); }
 
-  .reactor {
-    position: absolute; top: 50%; left: 50%; transform-origin: top left;
-    width: min(52vh, 460px); aspect-ratio: 1; display: grid; place-items: center;
-    transform: translate(-50%, -50%) scale(1);
-    transition: transform .4s cubic-bezier(.4,0,.2,1), top .4s cubic-bezier(.4,0,.2,1), left .4s cubic-bezier(.4,0,.2,1);
-    z-index: 2;
+  /* ---------- centre: the brain ---------- */
+  .centre { position: relative; min-width: 0; min-height: 0; overflow: hidden;
+    background: radial-gradient(ellipse 55% 55% at 50% 46%, rgba(139, 92, 246, .10), transparent 70%); }
+  #stars { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .stage {
+    position: absolute; inset: 0 0 76px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 26px; transition: justify-content .3s;
   }
-  .stage.docked .reactor {
-    top: 22px; left: 22px;
-    transform: translate(0, 0) scale(.35);
+  .orb {
+    --lvl: 0; position: relative; width: min(30vh, 250px); aspect-ratio: 1;
+    transform: scale(calc(1 + var(--lvl) * .14)); transition: width .45s cubic-bezier(.4, 0, .2, 1);
   }
-  .ring { position: absolute; border-radius: 50%; }
-  .r1 { inset: 0; border: 1px solid rgba(53,184,240,.18); }
-  .r2 {
-    inset: 6%;
-    background: conic-gradient(from 0deg, transparent 0 200deg,
-      rgba(53,184,240,.85) 300deg, rgba(200,245,255,1) 348deg, transparent 360deg);
-    -webkit-mask: radial-gradient(circle, transparent 78%, #000 79%, #000 84%, transparent 85%);
-            mask: radial-gradient(circle, transparent 78%, #000 79%, #000 84%, transparent 85%);
-    animation: spin 7s linear infinite;
+  .orb > * { position: absolute; border-radius: 50%; }
+  .orb-halo {
+    inset: -18%; filter: blur(26px); opacity: calc(.35 + var(--lvl) * .6);
+    background: radial-gradient(circle, rgba(139, 92, 246, .55), transparent 65%);
+    transition: background .5s;
   }
-  .r3 {
-    inset: 15%;
-    background: repeating-conic-gradient(from 0deg,
-      rgba(53,184,240,.75) 0 .8deg, transparent .8deg 5deg);
-    -webkit-mask: radial-gradient(circle, transparent 84%, #000 85%, #000 92%, transparent 93%);
-            mask: radial-gradient(circle, transparent 84%, #000 85%, #000 92%, transparent 93%);
-    animation: spinBack 26s linear infinite;
+  .orb-ring {
+    inset: 0; animation: spin 9s linear infinite;
+    background: conic-gradient(from 0deg, transparent 0 55%, rgba(213, 181, 255, .85) 80%, transparent 100%);
+    -webkit-mask: radial-gradient(circle, transparent 66%, #000 67.5%, #000 69%, transparent 70.5%);
+            mask: radial-gradient(circle, transparent 66%, #000 67.5%, #000 69%, transparent 70.5%);
   }
-  .r4 { inset: 24%; border: 1px dashed rgba(53,184,240,.35); animation: spinBack 18s linear infinite; }
-  .r5 {
-    inset: 32%; border: 2px solid transparent; border-right-color: rgba(200,245,255,.8);
-    animation: spin 3.2s linear infinite;
+  .orb-ring2 { inset: 8%; border: 1px dashed rgba(192, 192, 218, .18); animation: spin 40s linear infinite reverse; }
+  .orb-core {
+    inset: 22%;
+    background: radial-gradient(circle at 34% 30%, #fff 0, var(--accent2-ink) 12%, var(--accent2) 42%, #2a1a52 78%);
+    box-shadow: 0 0 40px rgba(139, 92, 246, .55), inset -10px -14px 30px rgba(0, 0, 0, .45);
+    transition: background .5s, box-shadow .5s;
   }
-  .glow {
-    position: absolute; inset: 30%; border-radius: 50%;
-    background: radial-gradient(circle, rgba(90,200,255,.5), rgba(20,90,150,.18) 55%, transparent 72%);
-    filter: blur(8px);
-  }
-  .name {
-    position: relative; font-size: clamp(28px, 5.4vh, 58px); letter-spacing: .34em;
-    text-indent: .34em; font-weight: 300; color: #fff;
-    text-shadow: 0 0 30px rgba(90,200,255,.85), 0 0 70px rgba(53,184,240,.45);
-  }
+  /* asleep: dim and slow breathing */
+  .asleep .orb-core { background: radial-gradient(circle at 34% 30%, #b9b0d6 0, #55467e 30%, #1d1830 80%); box-shadow: 0 0 22px rgba(139, 92, 246, .2); animation: breathe 5s ease-in-out infinite; }
+  .asleep .orb-halo { opacity: .18; }
+  .asleep .orb-ring { animation-duration: 30s; opacity: .35; }
+  /* his voice is orange, like Javis's accent */
+  .speaking .orb-core { background: radial-gradient(circle at 34% 30%, #fff 0, var(--accent-ink) 14%, var(--accent) 45%, #6b2408 82%); box-shadow: 0 0 50px rgba(255, 122, 60, .6), inset -10px -14px 30px rgba(0, 0, 0, .4); }
+  .speaking .orb-halo { background: radial-gradient(circle, rgba(255, 122, 60, .55), transparent 65%); }
+  .speaking .orb-ring { background: conic-gradient(from 0deg, transparent 0 55%, rgba(255, 171, 129, .9) 80%, transparent 100%); }
+  .listening .orb-ring { animation-duration: 4s; }
+  .thinking .orb-ring { animation-duration: 1.4s; }
+  .thinking .orb-ring2 { animation-duration: 6s; }
 
-  .thinking .r2 { animation-duration: 1.5s; }
-  .thinking .r5 { animation-duration: .8s; }
-  .speaking .glow { background: radial-gradient(circle, rgba(130,225,255,.7), rgba(30,120,190,.24) 55%, transparent 72%); }
-  .listening .r2 {
-    background: conic-gradient(from 0deg, transparent 0 210deg,
-      rgba(220,240,250,.8) 312deg, #fff 350deg, transparent 360deg);
-  }
+  .state { text-align: center; }
+  .state b { display: block; font-size: 14px; font-weight: 600; letter-spacing: 4px; color: var(--text2); }
+  .speaking .state b { color: var(--accent-ink); }
+  .listening .state b, .thinking .state b { color: var(--accent2-ink); }
+  .state span { display: block; margin-top: 6px; font-size: 13px; color: var(--text3); }
 
-  /* ---------- typed results panel ---------- */
-  .resultPanel {
-    position: absolute; inset: 0; z-index: 1;
-    background: var(--panel);
-    border: 1px solid var(--edge);
-    border-radius: 16px;
-    backdrop-filter: blur(20px) saturate(150%);
-    -webkit-backdrop-filter: blur(20px) saturate(150%);
-    box-shadow: 0 16px 54px rgba(0,0,0,.5), 0 0 44px rgba(53,184,240,.12),
-                inset 0 1px 0 rgba(255,255,255,.06);
-    padding: 24px 30px 24px 210px;
-    display: flex; flex-direction: column; min-height: 0;
-    opacity: 0; transform: scale(.96) translateY(12px);
-    pointer-events: none;
-    transition: opacity .4s cubic-bezier(.4,0,.2,1), transform .4s cubic-bezier(.4,0,.2,1);
+  /* a tool result (weather, email, research…) slides up under the orb */
+  .stage.docked { justify-content: flex-start; padding-top: 22px; gap: 14px; }
+  .stage.docked .orb { width: 96px; }
+  .stage.docked .state span { display: none; }
+  .result {
+    display: none; position: relative; width: min(92%, 760px); flex: 1; min-height: 0;
+    flex-direction: column; padding: 22px 26px; border-radius: 18px;
+    background: rgba(15, 16, 25, .78); border: 1px solid var(--hairline);
+    backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+    box-shadow: 0 16px 50px rgba(0, 0, 0, .45); animation: rise .35s cubic-bezier(.4, 0, .2, 1);
   }
-  .stage.docked .resultPanel { opacity: 1; transform: scale(1) translateY(0); pointer-events: auto; }
-  .resultPanel::before, .resultPanel::after {
-    content: ""; position: absolute; width: 14px; height: 14px; pointer-events: none;
-    border-color: var(--cyan);
+  .stage.docked .result { display: flex; }
+  .close {
+    position: absolute; top: 12px; right: 12px; width: 28px; height: 28px; border-radius: 8px;
+    border: 1px solid var(--border); background: none; color: var(--text3); cursor: pointer; font-size: 15px; line-height: 1;
   }
-  .resultPanel::before { top: -1px; left: -1px; border-top: 2px solid; border-left: 2px solid; }
-  .resultPanel::after { bottom: -1px; right: -1px; border-bottom: 2px solid; border-right: 2px solid; }
+  .close:hover { background: var(--surface-3); color: var(--text); }
 
-  .rp-title {
-    font-family: var(--mono); font-size: 9px; letter-spacing: .2em; color: var(--dim);
-    text-transform: uppercase; padding-bottom: 10px; border-bottom: 1px solid rgba(56,170,240,.15);
-    margin-bottom: 10px; flex: none;
+  .stats {
+    position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+    display: flex; align-items: center; padding: 4px; border-radius: 14px;
+    background: rgba(15, 16, 25, .7); border: 1px solid var(--hairline);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
   }
-  .rp-empty { color: var(--dim); font-size: 12px; padding: 10px 4px; }
+  .stat { display: flex; flex-direction: column; align-items: center; padding: 6px 22px; }
+  .stat b { font-size: 20px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .stat span { font-size: 10px; letter-spacing: 2px; color: var(--text3); }
+  .stat-sep { width: 1px; height: 26px; background: var(--border); }
 
-  /* -- weather -- */
+  /* ---------- result panel contents ---------- */
+  .rp-title { font-size: 11px; font-weight: 600; letter-spacing: 2px; color: var(--text3); text-transform: uppercase; padding: 0 36px 10px 0; border-bottom: 1px solid var(--hairline); margin-bottom: 12px; flex: none; }
+  .rp-empty { color: var(--text3); font-size: 13px; padding: 10px 2px; }
   .wx { display: flex; flex-direction: column; gap: 16px; height: 100%; min-height: 0; }
-  .wx-head { display: flex; align-items: center; gap: 18px; flex: none; }
-  .wx-icon { width: 76px; height: 76px; flex: none; }
-  .wx-icon svg { width: 100%; height: 100%; color: var(--cyan-bright); filter: drop-shadow(0 0 8px rgba(53,184,240,.5)); }
-  .wx-temp { font-size: 44px; font-weight: 200; color: #fff; line-height: 1; text-shadow: 0 0 20px rgba(53,184,240,.4); }
-  .wx-temp small { font-size: 20px; color: var(--dim); margin-left: 2px; font-weight: 300; }
-  .wx-cond { font-family: var(--mono); font-size: 12px; letter-spacing: .14em; color: var(--cyan-bright); text-transform: uppercase; margin-top: 4px; }
-  .wx-loc { font-size: 13px; color: var(--dim); margin-top: 2px; }
-  .wx-blocks { display: flex; gap: 10px; flex: none; }
-  .wx-block { flex: 1; background: rgba(9,24,38,.4); border: 1px solid rgba(56,170,240,.18); border-radius: 8px; padding: 8px 12px; }
-  .wx-block span { display: block; font-family: var(--mono); font-size: 8px; letter-spacing: .18em; color: var(--dim); }
-  .wx-block b { display: block; font-size: 15px; color: var(--ice); margin-top: 3px; font-weight: 500; }
-  .wx-forecast { display: flex; gap: 10px; margin-top: auto; flex: none; }
-  .wx-day { flex: 1; text-align: center; background: rgba(9,24,38,.35); border: 1px solid rgba(56,170,240,.14); border-radius: 8px; padding: 10px 6px; }
-  .wx-day-name { font-family: var(--mono); font-size: 9px; letter-spacing: .14em; color: var(--dim); text-transform: uppercase; }
-  .wx-day-icon { width: 30px; height: 30px; margin: 6px auto; }
-  .wx-day-icon svg { width: 100%; height: 100%; color: var(--cyan-bright); }
-  .wx-day-temps b { color: var(--ice); font-size: 13px; }
-  .wx-day-temps span { color: var(--dim); font-size: 12px; margin-left: 5px; }
-
-  /* -- email -- */
-  .em-list, .em-detail { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-  .em-rows { overflow-y: auto; min-height: 0; }
-  .em-row { display: flex; align-items: center; gap: 10px; padding: 10px 4px; border-bottom: 1px solid rgba(56,170,240,.08); cursor: pointer; transition: background .15s ease; }
-  .em-row:hover { background: rgba(53,184,240,.07); }
-  .em-dot { width: 7px; height: 7px; border-radius: 50%; background: transparent; flex: none; }
-  .em-dot.unread { background: var(--cyan-bright); box-shadow: 0 0 6px var(--cyan-bright); }
+  .wx-head { display: flex; align-items: center; gap: 18px; }
+  .wx-icon { width: 68px; height: 68px; flex: none; color: var(--accent-ink); }
+  .wx-icon svg, .wx-day-icon svg { width: 100%; height: 100%; }
+  .wx-temp { font-size: 44px; font-weight: 300; line-height: 1; }
+  .wx-temp small { font-size: 18px; color: var(--text3); margin-left: 2px; }
+  .wx-cond { font-size: 12px; letter-spacing: 2px; color: var(--accent-ink); text-transform: uppercase; margin-top: 4px; }
+  .wx-loc { font-size: 13px; color: var(--text3); }
+  .wx-blocks, .wx-forecast { display: flex; gap: 10px; }
+  .wx-forecast { margin-top: auto; }
+  .wx-block, .wx-day { flex: 1; background: var(--surface-1); border: 1px solid var(--hairline); border-radius: 10px; padding: 9px 12px; }
+  .wx-block span, .wx-day-name { display: block; font-size: 10px; letter-spacing: 1.5px; color: var(--text3); text-transform: uppercase; }
+  .wx-block b { display: block; font-size: 15px; font-weight: 500; margin-top: 2px; }
+  .wx-day { text-align: center; }
+  .wx-day-icon { width: 28px; height: 28px; margin: 6px auto; color: var(--accent2-ink); }
+  .wx-day-temps span { color: var(--text3); margin-left: 5px; }
+  .em-list, .em-detail, .ls, .tx, .rs { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+  .em-rows, .ls-rows, .tx-body, .em-detail-body, .rs-why { overflow-y: auto; min-height: 0; }
+  .em-row { display: flex; align-items: center; gap: 10px; padding: 10px 6px; border-bottom: 1px solid var(--hairline); cursor: pointer; border-radius: 8px; }
+  .em-row:hover { background: var(--surface-2); }
+  .em-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .em-dot.unread { background: var(--accent); }
   .em-row-main { flex: 1; min-width: 0; }
-  .em-from { font-size: 13px; color: var(--ice); }
-  .em-subject { font-size: 12px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .em-time { font-family: var(--mono); font-size: 9px; color: var(--dim); flex: none; }
-  .em-back {
-    align-self: flex-start; background: none; border: 1px solid rgba(56,170,240,.32); color: var(--cyan-bright);
-    font-family: var(--mono); font-size: 10px; letter-spacing: .1em; padding: 5px 10px; border-radius: 5px;
-    cursor: pointer; margin-bottom: 14px; flex: none;
+  .em-subject { font-size: 12.5px; color: var(--text3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .em-time { font-size: 11px; color: var(--text3); flex: none; }
+  .em-back { align-self: flex-start; background: none; border: 1px solid var(--border); border-radius: 8px; padding: 5px 10px; cursor: pointer; color: var(--text2); margin-bottom: 14px; }
+  .em-detail-subject { font-size: 17px; font-weight: 500; }
+  .em-detail-meta { font-size: 12px; color: var(--text3); margin: 4px 0 14px; }
+  .em-detail-body, .tx-body { white-space: pre-wrap; line-height: 1.6; color: var(--text2); }
+  .rs { gap: 12px; }
+  .rs-tag { font-size: 10px; letter-spacing: 2px; color: var(--green); }
+  .rs-tag.dim { color: var(--text3); }
+  .rs-winner { background: var(--accent-wash); border: 1px solid var(--accent-line); border-radius: 12px; padding: 14px 16px; }
+  .rs-name { font-size: 22px; font-weight: 600; margin-top: 4px; }
+  .rs-name.small { font-size: 15px; font-weight: 400; color: var(--text2); }
+  .rs-runner { padding: 0 16px; }
+  .rs-why { color: var(--text2); line-height: 1.6; }
+  .rs-sources { margin-top: auto; font-size: 11px; color: var(--text3); }
+  .sy { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; }
+  .sy-value { font-size: 60px; font-weight: 300; line-height: 1; }
+  .sy-label { font-size: 12px; letter-spacing: 3px; color: var(--accent-ink); text-transform: uppercase; }
+  .sy-detail { color: var(--text3); }
+  .ls-row { display: flex; gap: 12px; padding: 9px 4px; border-bottom: 1px solid var(--hairline); }
+  .ls-idx { font-family: var(--mono); font-size: 11px; color: var(--text3); width: 18px; flex: none; }
+  .ls-secondary { font-size: 12px; color: var(--text3); }
+
+  /* ---------- right: conversation ---------- */
+  .chat { flex: 1; display: flex; flex-direction: column; gap: 12px; padding-right: 4px; }
+  .msg { max-width: 92%; }
+  .msg .who { font-size: 10.5px; letter-spacing: 1.5px; color: var(--text3); text-transform: uppercase; margin-bottom: 3px; }
+  .msg .text { padding: 9px 13px; border-radius: 14px; font-size: 13.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg.you { align-self: flex-end; }
+  .msg.you .who { text-align: right; }
+  .msg.you .text { background: var(--surface-3); border-bottom-right-radius: 4px; }
+  .msg.david .text { background: var(--accent-wash); border: 1px solid var(--accent-line); border-bottom-left-radius: 4px; }
+  .msg.live .text { border-style: dashed; }
+  .msg.pending .text { color: var(--text3); font-style: italic; }
+  .msg.error .text { background: rgba(244, 86, 90, .12); border: 1px solid rgba(244, 86, 90, .4); }
+  .acts { display: flex; flex-direction: column; gap: 6px; }
+  .act { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text2); }
+  .act::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent2); flex: none; }
+  .act time { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--text3); }
+
+  /* ---------- command bar ---------- */
+  .bar {
+    display: flex; align-items: flex-end; gap: 10px; margin: 10px 16px 14px; padding: 8px 8px 8px 18px;
+    border: 1px solid var(--border); border-radius: 24px; background: var(--bg2); transition: border-color .15s;
   }
-  .em-back:hover { background: rgba(53,184,240,.1); }
-  .em-detail-subject { font-size: 16px; color: #fff; flex: none; }
-  .em-detail-meta { font-family: var(--mono); font-size: 10px; color: var(--dim); margin-top: 4px; margin-bottom: 14px; flex: none; }
-  .em-detail-body { font-size: 13px; line-height: 1.6; color: var(--ice); overflow-y: auto; min-height: 0; white-space: pre-wrap; }
-
-  /* -- research -- */
-  .rs { display: flex; flex-direction: column; gap: 12px; height: 100%; min-height: 0; }
-  .rs-tag { font-family: var(--mono); font-size: 9px; letter-spacing: .16em; color: var(--green); }
-  .rs-tag.dim { color: var(--dim); }
-  .rs-winner { background: rgba(53,184,240,.08); border: 1px solid rgba(56,170,240,.3); border-radius: 10px; padding: 14px 16px; flex: none; }
-  .rs-name { font-size: 22px; color: #fff; margin-top: 5px; text-shadow: 0 0 16px rgba(53,184,240,.4); }
-  .rs-runner { padding: 2px 16px; flex: none; }
-  .rs-name.small { font-size: 15px; color: var(--ice); margin-top: 4px; font-weight: 400; }
-  .rs-why { font-size: 13px; color: var(--ice); line-height: 1.55; font-style: italic; overflow-y: auto; min-height: 0; }
-  .rs-sources { margin-top: auto; font-family: var(--mono); font-size: 10px; letter-spacing: .1em; color: var(--dim); flex: none; }
-
-  /* -- system -- */
-  .sy { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 8px; }
-  .sy-value { font-size: 64px; font-weight: 200; color: #fff; text-shadow: 0 0 26px rgba(53,184,240,.5); line-height: 1; }
-  .sy-label { font-family: var(--mono); font-size: 11px; letter-spacing: .3em; color: var(--cyan-bright); text-transform: uppercase; }
-  .sy-detail { font-size: 13px; color: var(--dim); }
-
-  /* -- list -- */
-  .ls { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-  .ls-rows { overflow-y: auto; min-height: 0; }
-  .ls-row { display: flex; align-items: baseline; gap: 12px; padding: 8px 4px; border-bottom: 1px solid rgba(56,170,240,.06); }
-  .ls-idx { font-family: var(--mono); font-size: 10px; color: var(--dim); width: 18px; flex: none; }
-  .ls-primary { font-size: 13px; color: var(--ice); }
-  .ls-secondary { font-size: 11px; color: var(--dim); margin-top: 2px; }
-
-  /* -- text fallback -- */
-  .tx { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-  .tx-body { overflow-y: auto; font-size: 14px; line-height: 1.6; color: var(--ice); white-space: pre-wrap; }
-
-  /* ---------- glass answer panel ---------- */
-  .said {
-    position: fixed;
-    left: 50%; bottom: 30px;
-    transform: translate(-50%, 14px) scale(.97);
-    width: min(64vw, 820px);
-    max-height: 34vh;
-    overflow-y: auto;
-    background: rgba(9, 24, 38, .5);
-    border: 1px solid rgba(56, 170, 240, .35);
-    border-radius: 16px;
-    backdrop-filter: blur(18px) saturate(150%);
-    -webkit-backdrop-filter: blur(18px) saturate(150%);
-    box-shadow: 0 10px 44px rgba(0,0,0,.5), 0 0 34px rgba(53,184,240,.14),
-                inset 0 1px 0 rgba(255,255,255,.07);
-    padding: 16px 22px 18px;
-    text-align: left;
-    opacity: 0; pointer-events: none;
-    transition: opacity .32s ease, transform .32s ease;
-    z-index: 40;
+  .bar:focus-within { border-color: var(--accent-line); }
+  .bar textarea {
+    flex: 1; resize: none; border: 0; outline: none; background: none; color: var(--text);
+    font: inherit; font-size: 14.5px; line-height: 1.5; padding: 7px 0; max-height: 120px;
   }
-  .said::before {
-    content: "DAVID"; display: block; font-family: var(--mono); font-size: 9px;
-    letter-spacing: .3em; color: var(--cyan-bright); opacity: .85; margin-bottom: 8px;
+  .bar textarea::placeholder { color: var(--text3); }
+  .send {
+    width: 38px; height: 38px; flex: none; border-radius: 50%; border: 0; cursor: pointer;
+    background: var(--accent); color: #fff; display: grid; place-items: center;
   }
-  .said span { font-size: 16px; line-height: 1.55; color: var(--ice); }
-  .said.show { opacity: 1; transform: translate(-50%, 0) scale(1); pointer-events: auto; }
-
-  /* ---------- protocols ---------- */
-  .proto { display: flex; flex-direction: column; gap: 12px; }
-  .proto .row { font-size: 11px; display: grid; grid-template-columns: 1fr auto; gap: 6px; }
-  .proto .row .tag { font-family: var(--mono); font-size: 9px; letter-spacing: .14em; }
-  .proto .row .tag.on { color: var(--green); }
-  .proto .row .tag.off { color: var(--dim); }
-  .proto .bar { grid-column: 1 / -1; height: 3px; background: rgba(56,170,240,.15); }
-  .proto .bar i { display: block; height: 100%; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
-
-  /* ---------- timeline ---------- */
-  .timeline { position: relative; padding-top: 6px; }
-  .timeline .track { height: 1px; background: rgba(56,170,240,.3); margin: 16px 0 10px; position: relative; }
-  .timeline .dot { position: absolute; top: -3px; width: 7px; height: 7px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 10px var(--cyan); }
-  .timeline .items { display: grid; grid-auto-flow: column; gap: 8px; }
-  .timeline .items div { font-family: var(--mono); font-size: 8px; letter-spacing: .1em; color: var(--dim); }
-  .timeline .items div b { display: block; color: var(--ice); font-size: 8px; margin-top: 3px; }
-
-  /* ---------- session ---------- */
-  .session { display: grid; grid-template-columns: 1fr 96px; gap: 12px; align-items: center; }
-  .session .rows { display: grid; gap: 9px; font-family: var(--mono); font-size: 9px; letter-spacing: .14em; color: var(--dim); }
-  .session .rows b { display: block; font-size: 15px; letter-spacing: .06em; color: var(--ice); margin-top: 2px; }
-  .session .rows b.good { color: var(--green); }
-
-  /* ---------- map ---------- */
-  .map { height: 100%; width: 100%; opacity: .75; }
-  .map .dotm { fill: rgba(53,184,240,.45); }
-  .map .hot { fill: var(--cyan-bright); }
+  .send:disabled { opacity: .4; cursor: default; }
+  .hint { align-self: center; font-size: 11.5px; color: var(--text3); white-space: nowrap; }
 
   @keyframes spin { to { transform: rotate(360deg); } }
-  @keyframes spinBack { to { transform: rotate(-360deg); } }
-  @keyframes blink { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
-  .blink { animation: blink 1.8s ease-in-out infinite; }
+  @keyframes breathe { 50% { opacity: .65; } }
+  @keyframes rise { from { opacity: 0; transform: translateY(14px); } }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 
-  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+  @media (max-width: 1100px) {
+    .body { grid-template-columns: 240px minmax(0, 1fr) 300px; }
+    .company, .date { display: none; }
+  }
+  @media (max-width: 820px) {
+    html, body { height: auto; }
+    body { overflow: auto; grid-template-rows: auto auto auto; }
+    .side { overflow: visible; }
+    .section.grow { flex: none; }
+    .chat { min-height: 90px; }
+    .bar { position: sticky; bottom: 0; margin: 10px 0 0; border-radius: 20px 20px 0 0; }
+    .top { grid-template-columns: 1fr auto; padding: 10px 16px; }
+    .top-center { display: none; }
+    .body { grid-template-columns: 1fr; }
+    .centre { height: 62vh; }
+    .side.left { order: 2; border: 0; }
+    .side.right { order: 1; border: 0; max-height: 60vh; }
+    .hint { display: none; }
+    #brainChip { display: none; }
+    .stat { padding: 6px 12px; }
+    .stat b { font-size: 17px; }
+    .stage { inset: 0 0 70px; }
+    .orb { width: min(24vh, 180px); }
+  }
 </style>
 </head>
 <body>
 
-<header>
-  <div class="brand">
-    <div class="mark">D</div>
-    <div><b>DAVID OS</b><span id="ver">v1.0 · LIVE</span></div>
+<header class="top">
+  <div class="top-left">
+    <div class="brand"><span class="brand-mark">D</span><span class="brand-text">DAVID</span></div>
+    <span class="chip" id="brainChip" title="The thinking brain behind typed chat, Telegram and jobs"><span class="dot brainy"></span><span id="brainName">—</span></span>
   </div>
-  <div class="stat">SYSTEM STATUS<b id="sysStatus">STARTING</b></div>
-  <div class="clock">
-    <div class="date" id="date">—</div>
-    <div class="time" id="time">--:--:--</div>
+  <div class="top-center">
+    <span class="chip"><span class="dot" id="linkDot"></span><span id="linkText">Starting</span></span>
+    <span class="clock" id="time">--:--</span>
+    <span class="date" id="date"></span>
   </div>
-  <div class="stat right">NETWORK<b id="net">CHECKING</b></div>
-  <div class="company"><b>AIBY TECHNOLOGIES</b><span>INNOVATE. AUTOMATE. ELEVATE</span></div>
+  <div class="top-right">
+    <a class="chip" href="/dashboard.html" target="_blank" rel="noopener">Settings &amp; connections</a>
+    <div class="company"><b>AIBY TECHNOLOGIES</b><span>INNOVATE · AUTOMATE · ELEVATE</span></div>
+  </div>
 </header>
 
-<main>
-  <aside class="left">
-    <section class="panel">
-      <h2>Voice Recognition</h2>
-      <div class="wave" id="wave"></div>
-      <div class="caption idle" id="voiceCaption">Standing by…</div>
-    </section>
-
-    <section class="panel">
-      <h2>Tasks Overview</h2>
-      <div class="log" id="log"><div class="empty">No tasks yet.</div></div>
-    </section>
-
-    <section class="panel">
-      <h2>System Monitor</h2>
-      <div class="dials">
-        <div class="dial" data-key="cpu"></div>
-        <div class="dial" data-key="ram"></div>
-        <div class="dial" data-key="disk"></div>
+<main class="body">
+  <aside class="side left">
+    <section class="section grow">
+      <div class="label">Second Brain <span class="count" id="factCount"></span></div>
+      <div class="scroll">
+        <div class="facts" id="facts"><div class="empty">Loading…</div></div>
+        <div class="pages" id="pages"></div>
       </div>
     </section>
-
-    <section class="panel">
-      <h2>Data Stream</h2>
-      <div class="stream" id="stream"></div>
+    <section class="section">
+      <div class="label">Jobs <span class="count" id="jobCount"></span></div>
+      <div id="jobs" class="scroll" style="max-height: 150px"><div class="empty">Loading…</div></div>
+    </section>
+    <section class="section">
+      <div class="label">This Mac</div>
+      <div class="meters" id="meters"></div>
+      <div class="senses" id="senses"></div>
     </section>
   </aside>
 
-  <section class="centre">
-    <div class="state-line">
-      <b id="stateBig">STANDING BY</b>
-      <span id="stateSub">— awaiting command —</span>
-    </div>
-
-    <div class="stage" id="stage">
-      <div class="reactor" id="reactor">
-        <div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div>
-        <div class="ring r4"></div><div class="ring r5"></div>
-        <div class="glow" id="glow"></div>
-        <div class="name">DAVID</div>
+  <section class="centre" aria-label="David">
+    <canvas id="stars" aria-hidden="true"></canvas>
+    <div class="stage idle" id="stage">
+      <div class="orb" id="orb" aria-hidden="true">
+        <div class="orb-halo"></div><div class="orb-ring"></div><div class="orb-ring2"></div><div class="orb-core"></div>
       </div>
-      <div class="resultPanel" id="resultPanel"></div>
+      <div class="state" role="status" aria-live="polite"><b id="stateBig">CONNECTING</b><span id="stateSub">Reaching David…</span></div>
+      <div class="result" id="result">
+        <button class="close" id="closeResult" aria-label="Close this result">×</button>
+        <div id="resultBody" style="display:flex;flex-direction:column;flex:1;min-height:0"></div>
+      </div>
     </div>
-
-    <div class="said" id="said"><span id="saidText"></span></div>
+    <div class="stats">
+      <div class="stat"><b id="statCmds">0</b><span>ACTIONS</span></div><span class="stat-sep"></span>
+      <div class="stat"><b id="statFacts">–</b><span>FACTS</span></div><span class="stat-sep"></span>
+      <div class="stat"><b id="statJobs">–</b><span>JOBS</span></div><span class="stat-sep"></span>
+      <div class="stat"><b id="statUp">0:00</b><span>UPTIME</span></div>
+    </div>
   </section>
 
-  <aside class="right">
-    <section class="panel">
-      <h2>Global Overview</h2>
-      <svg class="map" id="map" viewBox="0 0 320 150" preserveAspectRatio="xMidYMid meet"></svg>
+  <aside class="side right">
+    <section class="section grow">
+      <div class="label">Conversation</div>
+      <div class="chat scroll" id="chat" aria-live="polite"><div class="empty" id="chatEmpty">Say something, or type below. Both land here.</div></div>
     </section>
-
-    <section class="panel">
-      <h2>Active Protocols</h2>
-      <div class="proto" id="proto"></div>
-    </section>
-
-    <section class="panel">
-      <h2>Mission Timeline</h2>
-      <div class="timeline">
-        <div class="track" id="track"></div>
-        <div class="items" id="timeline"></div>
-      </div>
-    </section>
-
-    <section class="panel">
-      <h2>Session Status</h2>
-      <div class="session">
-        <div class="rows">
-          <div>UPTIME<b id="uptime">00:00</b></div>
-          <div>COMMANDS RUN<b id="cmdCount">0</b></div>
-          <div>LINK<b id="link" class="good">—</b></div>
-        </div>
-        <div class="dial" data-key="battery"></div>
-      </div>
+    <section class="section">
+      <div class="label">Recent actions</div>
+      <div class="acts" id="acts"><div class="empty">Nothing yet.</div></div>
     </section>
   </aside>
 </main>
 
+<form class="bar" id="bar">
+  <textarea id="input" rows="1" placeholder="What should I do?" aria-label="Type to David"></textarea>
+  <span class="hint">Enter to send · Shift+Enter for a new line</span>
+  <button class="send" id="send" type="submit" aria-label="Send" disabled>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+  </button>
+</form>
+
 <script>
-// ---------- static furniture ----------
-const BARS = 58;
-const wave = document.getElementById("wave");
-for (let i = 0; i < BARS; i++) wave.appendChild(document.createElement("i"));
-const bars = [...wave.children];
-
-// dials
-document.querySelectorAll(".dial").forEach((d) => {
-  const label = { cpu: "CPU", ram: "RAM", disk: "DISK", battery: "PWR" }[d.dataset.key];
-  d.innerHTML = `
-    <svg width="100%" height="100%" viewBox="0 0 80 80">
-      <circle cx="40" cy="40" r="33" fill="none" stroke="rgba(56,170,240,.15)" stroke-width="6"/>
-      <circle cx="40" cy="40" r="33" fill="none" stroke="#35B8F0" stroke-width="6"
-              stroke-linecap="round" stroke-dasharray="207" stroke-dashoffset="207"
-              style="filter:drop-shadow(0 0 6px rgba(53,184,240,.8))"/>
-    </svg>
-    <div class="val"><small>${label}</small><b>—</b></div>`;
-});
-
-function setDial(key, pct) {
-  const d = document.querySelector(`.dial[data-key="${key}"]`);
-  if (!d || pct == null) return;
-  const arc = d.querySelectorAll("circle")[1];
-  arc.style.strokeDashoffset = String(207 - (207 * Math.max(0, Math.min(100, pct))) / 100);
-  arc.setAttribute("stroke", pct > 85 ? "#E8A33D" : "#35B8F0");
-  d.querySelector("b").textContent = Math.round(pct) + "%";
+const $ = (id) => document.getElementById(id);
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text != null) n.textContent = text;
+  return n;
 }
-
-// world map — decorative, drawn as a dot grid with a few live-looking nodes
-(function drawMap() {
-  const svg = document.getElementById("map");
-  const LAND = [
-    [30,40,52,26],[46,30,26,18],[84,34,58,30],[96,64,40,44],[150,26,120,44],
-    [172,70,44,30],[236,88,52,34],[62,88,34,52]
-  ];
-  let out = "";
-  LAND.forEach(([x, y, w, h]) => {
-    for (let i = 0; i < w; i += 4)
-      for (let j = 0; j < h; j += 4)
-        if (Math.random() > .35)
-          out += `<rect class="dotm" x="${x + i}" y="${y + j}" width="1.6" height="1.6"/>`;
-  });
-  [[58,52],[112,46],[168,54],[196,86],[252,102],[92,96]].forEach(([x, y], i) => {
-    out += `<circle class="hot" cx="${x}" cy="${y}" r="2.4">
-      <animate attributeName="opacity" values="1;.25;1" dur="${2 + i * .4}s" repeatCount="indefinite"/>
-    </circle>`;
-  });
-  svg.innerHTML = out;
-})();
-
-// data stream — decorative
-setInterval(() => {
-  const el = document.getElementById("stream");
-  const rows = 14, cols = 46;
-  let out = "";
-  for (let r = 0; r < rows; r++) {
-    let line = "";
-    for (let c = 0; c < cols; c++) line += Math.random() > .5 ? "1" : "0";
-    out += line + "<br>";
-  }
-  el.innerHTML = out;
-}, 220);
-
-// clock
-setInterval(() => {
-  const now = new Date();
-  document.getElementById("time").textContent = now.toLocaleTimeString();
-  document.getElementById("date").textContent = now
-    .toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })
-    .toUpperCase();
-}, 1000);
-
-// ---------- live state ----------
-const STATE_TEXT = {
-  idle:      ["STANDING BY", "— awaiting command —"],
-  asleep:    ["ASLEEP",      "— say the wake phrase —"],
-  listening: ["LISTENING",   "— receiving input —"],
-  thinking:  ["PROCESSING",  "— carrying out tasks —"],
-  speaking:  ["RESPONDING",  "— transmitting —"],
-};
-
-let level = 0, target = 0, startedAt = Date.now(), commands = 0;
-
-function paint() {
-  level += (target - level) * 0.25;
-  bars.forEach((b, i) => {
-    const mid = 1 - Math.abs(i - (BARS - 1) / 2) / ((BARS - 1) / 2);
-    const h = 3 + level * 70 * (0.3 + mid * 0.7) * (0.45 + Math.random() * 0.55);
-    b.style.height = h.toFixed(1) + "px";
-  });
-  requestAnimationFrame(paint);
-}
-paint();
-
-// ---------- typed results panel ----------
-// A tool result with actual data lands here as s.panel = {type, data}.
-// Ordinary conversation never sets it, so this whole block sits dormant
-// until the first real result — see david_live.py's Panel class.
-
 function esc(v) {
   return String(v ?? "").replace(/[&<>"']/g, (c) => (
     { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+// ---------- clock and uptime ----------
+const startedAt = Date.now();
+function tick() {
+  const now = new Date();
+  $("time").textContent = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  $("date").textContent = now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
+  const s = Math.floor((Date.now() - startedAt) / 1000);
+  $("statUp").textContent = Math.floor(s / 3600) ? `${Math.floor(s / 3600)}h ${Math.floor(s / 60) % 60}m`
+                                                  : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+tick();
+setInterval(tick, 1000);
+
+// ---------- the constellation behind the orb ----------
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const canvas = $("stars"), ctx = canvas.getContext("2d");
+let stars = [], W = 0, H = 0, warm = 0, warmTarget = 0;
+function sizeCanvas() {
+  const r = canvas.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  W = r.width; H = r.height; canvas.width = W * dpr; canvas.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const n = Math.round(Math.min(90, (W * H) / 9000));
+  stars = Array.from({ length: n }, () => ({
+    x: Math.random() * W, y: Math.random() * H,
+    vx: (Math.random() - .5) * .18, vy: (Math.random() - .5) * .18, r: Math.random() * 1.4 + .4 }));
+}
+function drawStars() {
+  warm += (warmTarget - warm) * .05;
+  ctx.clearRect(0, 0, W, H);
+  // violet when thinking or idle, warming to orange while he speaks
+  const c = [Math.round(139 + (255 - 139) * warm), Math.round(92 + (122 - 92) * warm), Math.round(246 + (60 - 246) * warm)];
+  for (const a of stars) {
+    if (!reduceMotion) {
+      a.x += a.vx; a.y += a.vy;
+      if (a.x < 0 || a.x > W) a.vx *= -1;
+      if (a.y < 0 || a.y > H) a.vy *= -1;
+    }
+  }
+  for (let i = 0; i < stars.length; i++) {
+    for (let j = i + 1; j < stars.length; j++) {
+      const a = stars[i], b = stars[j], d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (d < 120) {
+        ctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${(1 - d / 120) * .22})`;
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      }
+    }
+  }
+  for (const a of stars) {
+    ctx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},.75)`;
+    ctx.beginPath(); ctx.arc(a.x, a.y, a.r, 0, Math.PI * 2); ctx.fill();
+  }
+}
+sizeCanvas();
+addEventListener("resize", () => { sizeCanvas(); if (reduceMotion) drawStars(); });
+
+// ---------- orb follows his voice ----------
+let level = 0, target = 0;
+function frame() {
+  level += (target - level) * .2;
+  $("orb").style.setProperty("--lvl", level.toFixed(3));
+  drawStars();
+  if (!reduceMotion) requestAnimationFrame(frame);
+}
+frame();
+
+// ---------- tool results (weather, email, research …) ----------
 const WEATHER_ICONS = {
   sun: `<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="24" cy="24" r="9"/><path d="M24 4v6M24 38v6M4 24h6M38 24h6M9.5 9.5l4.2 4.2M34.3 34.3l4.2 4.2M9.5 38.5l4.2-4.2M34.3 13.7l4.2-4.2"/></svg>`,
   "cloud-sun": `<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><g opacity=".75"><circle cx="16" cy="16" r="6"/><path d="M16 4v3M16 25v3M4 16h3M25 16h3M8 8l2.1 2.1M21.9 21.9L24 24M8 24l2.1-2.1M21.9 10.1L24 8"/></g><path d="M14 40h20a7 7 0 0 0 1-13.9A10 10 0 0 0 16 24a7 7 0 0 0-2 16z"/></svg>`,
@@ -589,41 +487,36 @@ function renderWeather(d) {
     <div class="wx-day">
       <div class="wx-day-name">${esc(f.day)}</div>
       <div class="wx-day-icon">${WEATHER_ICONS[f.icon] || WEATHER_ICONS.cloud}</div>
-      <div class="wx-day-temps"><b>${f.hi ?? "—"}°</b><span>${f.lo ?? "—"}°</span></div>
+      <div class="wx-day-temps"><b>${esc(f.hi ?? "—")}°</b><span>${esc(f.lo ?? "—")}°</span></div>
     </div>`).join("");
   return `
     <div class="wx">
+      <div class="rp-title">Weather</div>
       <div class="wx-head">
         <div class="wx-icon">${WEATHER_ICONS[d.icon] || WEATHER_ICONS.cloud}</div>
         <div>
-          <div class="wx-temp">${d.temp}<small>${esc(d.unit)}</small></div>
+          <div class="wx-temp">${esc(d.temp)}<small>${esc(d.unit)}</small></div>
           <div class="wx-cond">${esc(d.condition)}</div>
           <div class="wx-loc">${esc(d.location)}</div>
         </div>
       </div>
       <div class="wx-blocks">
-        <div class="wx-block"><span>FEELS LIKE</span><b>${d.feels_like}${esc(d.unit)}</b></div>
-        <div class="wx-block"><span>WIND</span><b>${d.wind} ${esc(d.wind_unit)}</b></div>
-        <div class="wx-block"><span>HUMIDITY</span><b>${d.humidity}%</b></div>
+        <div class="wx-block"><span>Feels like</span><b>${esc(d.feels_like)}${esc(d.unit)}</b></div>
+        <div class="wx-block"><span>Wind</span><b>${esc(d.wind)} ${esc(d.wind_unit)}</b></div>
+        <div class="wx-block"><span>Humidity</span><b>${esc(d.humidity)}%</b></div>
       </div>
-      <div class="wx-forecast">${days || '<div class="rp-empty">No forecast.</div>'}</div>
+      ${days ? `<div class="wx-forecast">${days}</div>` : ""}
     </div>`;
 }
 
 function renderResearch(d) {
   return `
     <div class="rs">
-      <div class="rp-title">RESEARCH${d.topic ? " · " + esc(d.topic) : ""}</div>
-      <div class="rs-winner">
-        <div class="rs-tag">RECOMMENDED</div>
-        <div class="rs-name">${esc(d.winner)}</div>
-      </div>
-      <div class="rs-runner">
-        <div class="rs-tag dim">RUNNER-UP</div>
-        <div class="rs-name small">${esc(d.runner_up)}</div>
-      </div>
+      <div class="rp-title">Research${d.topic ? " · " + esc(d.topic) : ""}</div>
+      <div class="rs-winner"><div class="rs-tag">RECOMMENDED</div><div class="rs-name">${esc(d.winner)}</div></div>
+      <div class="rs-runner"><div class="rs-tag dim">RUNNER-UP</div><div class="rs-name small">${esc(d.runner_up)}</div></div>
       <div class="rs-why">${esc(d.reasoning)}</div>
-      <div class="rs-sources">${d.sources || 0} source${d.sources === 1 ? "" : "s"} checked</div>
+      <div class="rs-sources">${Number(d.sources) || 0} source${d.sources === 1 ? "" : "s"} checked</div>
     </div>`;
 }
 
@@ -641,31 +534,18 @@ function renderList(d) {
   const rows = items.length ? items.map((it, i) => `
     <div class="ls-row">
       <span class="ls-idx">${i + 1}</span>
-      <div>
-        <div class="ls-primary">${esc(it.primary)}</div>
-        ${it.secondary ? `<div class="ls-secondary">${esc(it.secondary)}</div>` : ""}
-      </div>
+      <div><div>${esc(it.primary)}</div>${it.secondary ? `<div class="ls-secondary">${esc(it.secondary)}</div>` : ""}</div>
     </div>`).join("") : '<div class="rp-empty">Nothing found.</div>';
-  return `
-    <div class="ls">
-      <div class="rp-title">${esc(d.title || "RESULTS")}</div>
-      <div class="ls-rows">${rows}</div>
-    </div>`;
+  return `<div class="ls"><div class="rp-title">${esc(d.title || "Results")}</div><div class="ls-rows">${rows}</div></div>`;
 }
 
 function renderText(d) {
-  return `
-    <div class="tx">
-      <div class="rp-title">${esc(d.title || "RESULT")}</div>
-      <div class="tx-body">${esc(d.body || "")}</div>
-    </div>`;
+  return `<div class="tx"><div class="rp-title">${esc(d.title || "Result")}</div><div class="tx-body">${esc(d.body || "")}</div></div>`;
 }
 
-// Email keeps its own tiny bit of client-side state — which message, if
-// any, is open — so switching to the full body never needs another trip
-// to David; every body he might open was already sent up front.
+// Email keeps which message is open on this page, so opening one never needs
+// another trip to David; every body he might open was sent up front.
 let emailState = null;
-
 function emailHTML() {
   if (!emailState) return "";
   const { messages, openIndex } = emailState;
@@ -673,28 +553,20 @@ function emailHTML() {
     const m = messages[openIndex];
     return `
       <div class="em-detail">
-        <button class="em-back" data-back>&larr; back to inbox</button>
+        <button class="em-back" data-back>&larr; Back to inbox</button>
         <div class="em-detail-subject">${esc(m.subject)}</div>
         <div class="em-detail-meta">${esc(m.from)} &middot; ${esc(m.time)}</div>
-        <div class="em-detail-body">${esc(m.body) || "no readable text in it"}</div>
+        <div class="em-detail-body">${esc(m.body) || "No readable text in it."}</div>
       </div>`;
   }
   const rows = messages.length ? messages.map((m, i) => `
     <div class="em-row" data-idx="${i}">
       <span class="em-dot ${m.unread ? "unread" : ""}"></span>
-      <div class="em-row-main">
-        <div class="em-from">${esc(m.from)}</div>
-        <div class="em-subject">${esc(m.subject)}</div>
-      </div>
+      <div class="em-row-main"><div>${esc(m.from)}</div><div class="em-subject">${esc(m.subject)}</div></div>
       <div class="em-time">${esc(m.time)}</div>
     </div>`).join("") : '<div class="rp-empty">Nothing here.</div>';
-  return `
-    <div class="em-list">
-      <div class="rp-title">INBOX &middot; ${messages.length}</div>
-      <div class="em-rows">${rows}</div>
-    </div>`;
+  return `<div class="em-list"><div class="rp-title">Inbox &middot; ${messages.length}</div><div class="em-rows">${rows}</div></div>`;
 }
-
 function renderEmail(d) {
   emailState = { messages: d.messages || [], openIndex: d.open_index != null ? d.open_index : null };
   return emailHTML();
@@ -705,130 +577,163 @@ const PANEL_RENDERERS = {
   system: renderSystem, list: renderList, text: renderText,
 };
 
-function renderPanel(p) {
-  if (p.type !== "email") emailState = null;
-  const fn = PANEL_RENDERERS[p.type] || renderText;
-  document.getElementById("resultPanel").innerHTML = fn(p.data || {});
+$("resultBody").addEventListener("click", (e) => {
+  if (!emailState) return;
+  if (e.target.closest("[data-back]")) emailState.openIndex = null;
+  else if (e.target.closest(".em-row")) emailState.openIndex = Number(e.target.closest(".em-row").dataset.idx);
+  else return;
+  $("resultBody").innerHTML = emailHTML();
+});
+$("closeResult").addEventListener("click", () => $("stage").classList.remove("docked"));
+
+// ---------- live state from David ----------
+const STATES = {
+  asleep:    ["ASLEEP",    (s) => s.wakePhrase ? `Say “${s.wakePhrase.replace(/^\w/, (c) => c.toUpperCase()).replace(/\bdavid\b/g, "David")}”` : "Sleeping"],
+  idle:      ["READY",     () => "Just talk, or type below"],
+  listening: ["LISTENING", () => "I'm hearing you"],
+  thinking:  ["THINKING",  () => "Working on it"],
+  speaking:  ["SPEAKING",  () => ""],
+};
+
+let lastPanelKey = null, turnsShown = 0, liveBubble = null;
+
+function addMsg(who, text, extra) {
+  $("chatEmpty")?.remove();
+  const m = el("div", `msg ${who}${extra ? " " + extra : ""}`);
+  m.append(el("div", "who", who === "you" ? "You" : "David"), el("div", "text", text));
+  const chat = $("chat"), nearBottom = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 80;
+  chat.append(m);
+  if (nearBottom) chat.scrollTop = chat.scrollHeight;
+  return m;
 }
 
-document.getElementById("resultPanel").addEventListener("click", (e) => {
-  if (!emailState) return;
-  if (e.target.closest("[data-back]")) {
-    emailState.openIndex = null;
-    document.getElementById("resultPanel").innerHTML = emailHTML();
-    return;
-  }
-  const row = e.target.closest(".em-row");
-  if (row) {
-    emailState.openIndex = Number(row.dataset.idx);
-    document.getElementById("resultPanel").innerHTML = emailHTML();
-  }
-});
-
-let lastPanelKey = null;
-
 function apply(s) {
-  const [big, sub] = STATE_TEXT[s.status] || STATE_TEXT.idle;
-  document.getElementById("stateBig").textContent = big;
-  document.getElementById("stateSub").textContent = sub;
+  const status = STATES[s.status] ? s.status : "idle";
+  const [big, sub] = STATES[status];
+  $("stage").classList.remove(...Object.keys(STATES));
+  $("stage").classList.add(status);
+  $("stateBig").textContent = big;
+  $("stateSub").textContent = sub(s);
 
-  const reactor = document.getElementById("reactor");
-  reactor.className = "reactor " + s.status;
+  target = status === "listening" ? (s.micLevel || 0) : status === "speaking" ? (s.outLevel || .5) : 0;
+  warmTarget = status === "speaking" ? 1 : 0;
 
-  target = s.status === "listening" ? (s.micLevel || 0)
-         : s.status === "speaking" ? (s.outLevel || 0.55)
-         : 0.06;
+  $("linkDot").className = "dot " + (s.connected ? "ok" : status === "asleep" ? "" : "warn");
+  $("linkText").textContent = s.connected ? "Live" : status === "asleep" ? "Asleep · listening offline" : "Reconnecting";
 
-  const cap = document.getElementById("voiceCaption");
-  cap.textContent = { idle: "Standing by…", listening: "Listening…",
-                      thinking: "Analysing…", speaking: "Responding…" }[s.status];
-  cap.className = "caption" + (s.status === "idle" ? " idle" : "");
+  // spoken conversation: finished turns, plus his sentence as it's being spoken
+  const turns = s.turns || [];
+  if (turns.length < turnsShown) turnsShown = 0;   // David restarted
+  if (turns.length > turnsShown) {
+    liveBubble?.remove(); liveBubble = null;
+    turns.slice(turnsShown).forEach((t) => addMsg(t.who === "you" ? "you" : "david", t.text));
+    turnsShown = turns.length;
+  }
+  if (status === "speaking" && s.lastLine) {
+    if (!liveBubble) liveBubble = addMsg("david", s.lastLine, "live");
+    else liveBubble.querySelector(".text").textContent = s.lastLine;
+  }
 
-  if (s.lastLine) document.getElementById("saidText").textContent = s.lastLine;
-
-  // A real tool result docks the reactor into the corner and brings the
-  // glass panel up, once, the first time one arrives — and it stays that
-  // way; only a newer result ever changes what's on it.
   if (s.panel) {
-    document.getElementById("stage").classList.add("docked");
     const key = s.panel.at + s.panel.type;
     if (key !== lastPanelKey) {
       lastPanelKey = key;
-      renderPanel(s.panel);
+      if (s.panel.type !== "email") emailState = null;
+      $("resultBody").innerHTML = (PANEL_RENDERERS[s.panel.type] || renderText)(s.panel.data || {});
+      $("stage").classList.add("docked");
     }
   }
 
-  // The glass panel pops up while he's actually speaking the answer, and
-  // lingers a couple of seconds after so there is time to finish reading it,
-  // rather than staying parked on screen between questions.
-  const said = document.getElementById("said");
-  if (s.status === "speaking") {
-    said.classList.add("show");
-    clearTimeout(said._hideTimer);
-  } else if (s.status === "idle") {
-    clearTimeout(said._hideTimer);
-    said._hideTimer = setTimeout(() => said.classList.remove("show"), 3000);
+  const acts = s.actions || [];
+  $("statCmds").textContent = s.commandCount ?? acts.length;
+  if (acts.length) {
+    $("acts").replaceChildren(...acts.slice(-5).reverse().map((a) => {
+      const row = el("div", "act", String(a.name).replace(/_/g, " "));
+      row.append(el("time", "", a.at));
+      return row;
+    }));
   }
 
-  document.getElementById("sysStatus").textContent = s.connected ? "OPTIMAL" : "OFFLINE";
-  document.getElementById("sysStatus").style.color = s.connected ? "var(--green)" : "var(--amber)";
-  document.getElementById("net").textContent = s.connected ? "CONNECTED" : "RECONNECTING";
-  document.getElementById("net").style.color = s.connected ? "var(--green)" : "var(--amber)";
-  document.getElementById("link").textContent = s.connected ? "STABLE" : "DOWN";
-
-  setDial("cpu", s.cpu); setDial("ram", s.ram);
-  setDial("disk", s.disk); setDial("battery", s.battery);
-
-  // tasks
-  const log = document.getElementById("log");
-  if (s.actions && s.actions.length) {
-    log.innerHTML = s.actions.slice(-5).reverse().map((a, i) => `
-      <div class="row"><span>&gt; ${a.name}</span>
-        <div class="bar"><i style="width:${100 - i * 16}%"></i></div>
-      </div>`).join("");
-  }
-
-  // protocols
-  const P = [
-    ["MICROPHONE",      s.micArmed],
-    ["MODEL LINK",      s.connected],
-    ["SCREEN VISION",   s.visionReady],
-    ["ACTION CONTROL",  s.actionsReady],
-  ];
-  document.getElementById("proto").innerHTML = P.map(([n, on]) => `
-    <div class="row">
-      <span>&gt; ${n}</span><span class="tag ${on ? "on" : "off"}">${on ? "ACTIVE" : "STANDBY"}</span>
-      <div class="bar"><i style="width:${on ? 100 : 22}%"></i></div>
-    </div>`).join("");
-
-  // timeline
-  if (s.actions && s.actions.length) {
-    const last = s.actions.slice(-4);
-    document.getElementById("timeline").innerHTML = last.map((a) =>
-      `<div>${a.at}<b>${a.name.replace(/_/g, " ").toUpperCase()}</b></div>`).join("");
-    document.getElementById("track").innerHTML = last.map((_, i) =>
-      `<div class="dot" style="left:${(i / Math.max(1, last.length - 1)) * 96}%"></div>`).join("");
-    commands = s.commandCount ?? commands;
-    document.getElementById("cmdCount").textContent = commands;
-  }
+  const meters = [["CPU", s.cpu], ["Memory", s.ram], ["Disk", s.disk], ["Battery", s.battery]];
+  $("meters").replaceChildren(...meters.map(([name, v]) => {
+    const pct = Math.max(0, Math.min(100, Math.round(v || 0)));
+    const row = el("div", "meter"), bar = el("div", "track"), fill = el("i", name !== "Battery" && pct > 85 ? "hot" : "");
+    fill.style.width = pct + "%"; bar.append(fill);
+    row.append(el("span", "", name), bar, el("b", "", pct + "%"));
+    return row;
+  }));
+  const senses = [["Microphone", s.micArmed], ["Screen vision", s.visionReady], ["Actions", s.actionsReady]];
+  $("senses").replaceChildren(...senses.map(([name, on]) => {
+    const chip = el("span", "sense"); chip.append(el("span", "dot" + (on ? " ok" : "")), name); return chip;
+  }));
 }
 
-setInterval(() => {
-  const s = Math.floor((Date.now() - startedAt) / 1000);
-  document.getElementById("uptime").textContent =
-    String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
-}, 1000);
-
-// ---------- connection to the assistant ----------
 function connect() {
   const ws = new WebSocket("ws://127.0.0.1:8766");
   ws.onmessage = (e) => { try { apply(JSON.parse(e.data)); } catch (_) {} };
   ws.onclose = () => {
-    document.getElementById("sysStatus").textContent = "NO LINK";
+    $("linkDot").className = "dot warn"; $("linkText").textContent = "No link to David";
     setTimeout(connect, 1500);
   };
 }
 connect();
+
+// ---------- Second Brain, jobs and brain name, from the dashboard API ----------
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+
+async function refreshSide() {
+  try {
+    const n = await api("/api/notes");
+    $("factCount").textContent = n.fact_count; $("statFacts").textContent = n.fact_count;
+    $("facts").replaceChildren(...(n.recent.length ? n.recent.slice().reverse().map((f) => el("div", "fact", f))
+                                                   : [el("div", "empty", "Nothing remembered yet. Say “remember that…”")]));
+    $("pages").replaceChildren(...n.pages.slice(0, 12).map((p) => el("span", "page-tag", p)));
+  } catch (_) { $("facts").replaceChildren(el("div", "empty", "Couldn't read the notes.")); }
+  try {
+    const j = (await api("/api/jobs")).jobs;
+    $("jobCount").textContent = j.length; $("statJobs").textContent = j.length;
+    $("jobs").replaceChildren(...(j.length ? j.map((x) => {
+      const row = el("div", "job"); row.append(el("b", "", x.text), el("small", "", "next " + String(x.next_run).replace("T", " ")));
+      return row;
+    }) : [el("div", "empty", "No jobs. Try “every weekday at 7am, check gold news”.")]));
+  } catch (_) { $("jobs").replaceChildren(el("div", "empty", "Couldn't read the jobs.")); }
+  try {
+    const b = await api("/api/brain"), cur = b.brains.find((x) => x.name === b.current);
+    $("brainName").textContent = b.current[0].toUpperCase() + b.current.slice(1) + (cur?.model ? " · " + cur.model : "");
+  } catch (_) {}
+}
+refreshSide();
+setInterval(refreshSide, 30000);
+
+// ---------- typing to David ----------
+const input = $("input");
+input.addEventListener("input", () => {
+  $("send").disabled = !input.value.trim();
+  input.style.height = "auto"; input.style.height = Math.min(120, input.scrollHeight) + "px";
+});
+input.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("bar").requestSubmit(); }
+});
+$("bar").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = ""; input.dispatchEvent(new Event("input"));
+  addMsg("you", text);
+  const wait = addMsg("david", "Thinking…", "pending");
+  try {
+    const r = await api("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+    wait.className = "msg david"; wait.querySelector(".text").textContent = r.reply;
+    refreshSide();
+  } catch (err) {
+    wait.className = "msg david error"; wait.querySelector(".text").textContent = "That didn't go through: " + err.message;
+  }
+});
 </script>
 </body>
 </html>
