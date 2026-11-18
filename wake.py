@@ -66,6 +66,8 @@ class Listener:
         if self.phrase and f" {self.phrase} " in f" {text} ":
             self.reset()
             return True
+        if text:
+            log(f'(asleep) heard "{text}"')   # on this Mac only — shows how Vosk hears your voice
         return False
 
     def reset(self):

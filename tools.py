@@ -6,6 +6,7 @@ engines (engines.py) and background jobs (jobs.py) all call the same tools
 from here, so a tool written once works on every channel.
 """
 import base64
+import difflib
 import json
 import os
 import re
@@ -351,15 +352,18 @@ def find_installed(name):
     key = name.lower().strip()
     if key in apps:
         return apps[key]
-    matches = [p for n, p in apps.items() if key in n]
-    if matches:
-        return sorted(matches, key=len)[0]
-    # match the other way round: "word" finding "Microsoft Word 2019"
-    words = key.split()
-    for n, p in apps.items():
-        if all(w in n for w in words):
-            return p
-    return None
+    if len(key) >= 4:          # a short name hides inside long ones: "oca" isn't LocalSend
+        matches = [p for n, p in apps.items() if key in n]
+        if matches:
+            return sorted(matches, key=len)[0]
+        # match the other way round: "word" finding "Microsoft Word 2019"
+        words = key.split()
+        for n, p in apps.items():
+            if all(w in n for w in words):
+                return p
+    # misheard names: speech-to-text hears "Orca" as "Oca" — take only a clearly close spelling
+    close = difflib.get_close_matches(key, list(apps), n=1, cutoff=0.85)
+    return apps[close[0]] if close else None
 
 
 def smart_open(name):
@@ -377,6 +381,13 @@ def smart_open(name):
     if site:
         _open_web(site)
         return f"you do not have {name} installed, so I opened the web version"
+
+    # likely a misheard name: ask rather than open a web search for the wrong word
+    near = [n.title() for w in [name.lower()] + name.lower().split()
+            for n in difflib.get_close_matches(w, list(_index_apps()), n=3, cutoff=0.6)]
+    if near:
+        return (f"nothing installed is called {name}. Closest installed: {', '.join(dict.fromkeys(near))}. "
+                "Ask which one they meant — don't guess")
 
     _open_web("https://www.google.com/search?q=" + urllib.parse.quote(name + " web app"))
     return f"you do not have {name} installed and I have no site for it, so I searched the web"
@@ -2732,6 +2743,8 @@ def _load_system():
     text = text.replace("{about}", CFG.get("owner_about") or "")
     return (text.strip()
             + f"\n\nApps available: {', '.join(CFG.get('apps', {}))}"
+            + "\nInstalled on this Mac (speech-to-text often mishears app names — if what you heard "
+              f"sounds like one of these, it is that one): {', '.join(sorted(_index_apps()))}"
             + f"\nSites available: {', '.join(CFG.get('sites', {}))}")
 
 
