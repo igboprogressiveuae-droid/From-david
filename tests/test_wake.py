@@ -77,7 +77,7 @@ class RealVoice(unittest.TestCase):
         path = os.path.join(self.tmp.name, "s.wav")
         subprocess.run(["say", "-o", path, "--data-format=LEI16@16000", sentence], check=True)
         with wave.open(path) as w:
-            pcm = w.readframes(w.getnframes()) + b"\0" * 32000
+            pcm = w.readframes(w.getnframes()) + b"\0" * 96000   # the big model waits ~1.3s of quiet
         return any(self.listener.heard(pcm[i:i + 2048]) for i in range(0, len(pcm), 2048))
 
     def test_the_phrase_wakes_him(self):

@@ -42,7 +42,7 @@ If one is missing, David says which — he won't pretend a click worked.
 - **Start at login.** Add `start-david.command` to System Settings → General → Login Items (remove it there to stop). It waits for the internet and never starts a second copy.
 - **Which microphone:** `"input_device"` in `config.json` (now the MacBook's own). Leave it `null` to follow macOS — but then AirPods in their case mean David hears silence.
 - `"wake_debug": true` prints every sentence the sleeping listener hears, to see how it hears your voice. Leave it off otherwise.
-- The speech model (about 40 MB) downloads the first time he starts, into `vosk-model/`.
+- The speech model (about 130 MB) downloads the first time he starts, into `vosk-model/`.
 
 ## How he's built
 

@@ -3,7 +3,7 @@ The wake phrase. David sleeps until he hears "wake_phrase" from config.json
 (say it as one sentence: "wake up David"). Listening for it happens on this Mac,
 offline, with Vosk — nothing reaches Google until the phrase is heard.
 
-The English model (about 40 MB) downloads once into vosk-model/ (not on GitHub).
+The English model (about 130 MB) downloads once into vosk-model/ (not on GitHub).
 """
 
 import importlib.util
@@ -16,8 +16,11 @@ import requests
 
 from tools import CFG, HERE, log
 
-MODEL_URL = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
-MODEL_DIR = os.path.join(HERE, "vosk-model")
+# The larger English model: far better with accents than the 40 MB "small" one.
+MODEL_NAME = "vosk-model-en-us-0.22-lgraph"
+MODEL_URL = f"https://alphacephei.com/vosk/models/{MODEL_NAME}.zip"
+MODELS = os.path.join(HERE, "vosk-model")
+MODEL_DIR = os.path.join(MODELS, MODEL_NAME)
 
 
 def normalise(text):
@@ -28,7 +31,8 @@ def ensure_model():
     """The model folder, downloading it the first time."""
     if os.path.isdir(MODEL_DIR) and os.listdir(MODEL_DIR):
         return MODEL_DIR
-    log("downloading the wake-phrase model (about 40 MB, once)…")
+    log("downloading the wake-phrase model (about 130 MB, once)…")
+    os.makedirs(MODELS, exist_ok=True)
     tmp = MODEL_DIR + ".zip"
     with requests.get(MODEL_URL, stream=True, timeout=60) as res:
         res.raise_for_status()
@@ -37,8 +41,9 @@ def ensure_model():
                 f.write(block)
     with zipfile.ZipFile(tmp) as z:
         top = z.namelist()[0].split("/")[0]
-        z.extractall(HERE)            # extractall refuses paths that climb out of HERE
-    os.replace(os.path.join(HERE, top), MODEL_DIR)
+        z.extractall(MODELS)          # extractall refuses paths that climb out of MODELS
+    if top != MODEL_NAME:
+        os.replace(os.path.join(MODELS, top), MODEL_DIR)
     os.remove(tmp)
     return MODEL_DIR
 

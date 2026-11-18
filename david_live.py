@@ -1112,7 +1112,7 @@ def doctor():
         report(problem is None, f'Wake phrase: "{phrase}" — listened for on this Mac, offline',
                f"{problem} — until then David listens all the time", False)
         if problem is None and not os.path.isdir(wake.MODEL_DIR):
-            print("       The speech model (about 40 MB) downloads the first time David starts.")
+            print("       The speech model (about 130 MB) downloads the first time David starts.")
     else:
         report(True, "No wake phrase — David listens all the time")
 
