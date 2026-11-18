@@ -52,7 +52,7 @@ If one is missing, David says which — he won't pretend a click worked.
 - **The thinking brain** is whatever `"brain"` says in `config.json`. Say "switch to Claude", or send `/brain claude` on Telegram. Claude needs `ANTHROPIC_API_KEY` and `pip install anthropic`; OpenRouter needs `OPENROUTER_API_KEY`.
 - **The Second Brain** is the `brain/` folder (not on GitHub): `memory/` for facts, `wiki/` for longer pages he writes, `conversations/` for every day's chat, and `archive.md` for anything replaced. Open it in Obsidian. Point `"brain_dir"` in `config.json` somewhere else to keep it in your own vault.
 - **Telegram:** make a bot with @BotFather, put `TELEGRAM_BOT_TOKEN` in `.env`, start David, message the bot, and it tells you the `TELEGRAM_OWNER_ID` to add. He answers no one else.
-- **Jobs:** "every morning at 7, give me the gold news" or "every 30 minutes, tell me if Bitcoin drops under 90,000". He asks before scheduling, speaks the result and sends it on Telegram, and stays quiet when there's nothing to say. A job can never delete, send or shut anything down.
+- **Jobs:** "every morning at 7, give me the gold news" or "every 30 minutes, tell me if Bitcoin drops under 90,000". He asks before scheduling, speaks the result and sends it on Telegram, and stays quiet when there's nothing to say. A job can only look things up (news, research, weather, his notes) and write to his notes — it never touches the screen, sends anything or deletes anything.
 - `python david_live.py --no-voice` runs only Telegram and jobs — no microphone needed.
 
 ## Make it yours
