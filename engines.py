@@ -62,6 +62,8 @@ def missing_key(provider):
     if provider == "claude":
         if importlib.util.find_spec("anthropic") is None:
             return "the Claude brain needs the anthropic package: .venv/bin/pip install anthropic"
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            return "ANTHROPIC_API_KEY is not set in .env"
     return None
 
 

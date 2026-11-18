@@ -6,3 +6,6 @@ requests>=2.31
 google-auth-oauthlib
 google-api-python-client
 google-auth-httplib2
+
+# Only needed to think with Claude ("brain": "claude" in config.json)
+anthropic>=2.10

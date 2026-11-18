@@ -41,6 +41,14 @@ class Engines(unittest.TestCase):
         self.assertEqual(engines.json_schema(g),
                          {"type": "object", "properties": {"n": {"type": "number", "description": "type"}}})
 
+    def test_claude_without_a_key_says_so(self):
+        saved = os.environ.pop("ANTHROPIC_API_KEY", None)
+        try:
+            self.assertIn("ANTHROPIC_API_KEY", engines.missing_key("claude") or "")
+        finally:
+            if saved is not None:
+                os.environ["ANTHROPIC_API_KEY"] = saved
+
     def test_a_brain_cannot_call_itself_or_switch_brains(self):
         names = {d["name"] for d in engines._declarations()}
         self.assertFalse({"ask_brain", "use_brain"} & names)
