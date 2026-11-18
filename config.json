@@ -67,6 +67,8 @@
   "display_mode": "full",
   "compact_width": 320,
   "compact_height": 260,
+  "wake_phrase": "wake up david",
+  "sleep_after_minutes": 5,
   "brain": "gemini",
   "brain_models": {
     "gemini": "",

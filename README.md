@@ -34,6 +34,14 @@ If one is missing, David says which — he won't pretend a click worked.
 
 **Use headphones.** There is no echo cancellation, so on speakers David can hear himself.
 
+## Hands-free
+
+- **Wake him by voice.** David sleeps until you say **"Wake up David"** as one sentence ("wake up David, what's the weather?" works too). Until then the microphone is heard only by this Mac — [Vosk](https://alphacephei.com/vosk/) listens offline, and nothing goes to Google.
+- **He falls back asleep** after 5 quiet minutes, or when you say "go to sleep" or "goodnight". A reminder, timer or job result wakes him so he can tell you.
+- **Change the phrase** with `"wake_phrase"` in `config.json`, and the nap time with `"sleep_after_minutes"`. Set `"wake_phrase": ""` for the old behaviour: always listening.
+- **Start at login.** Add `start-david.command` to System Settings → General → Login Items (remove it there to stop). It waits for the internet and never starts a second copy.
+- The speech model (about 40 MB) downloads the first time he starts, into `vosk-model/`.
+
 ## How he's built
 
 ```

@@ -129,9 +129,9 @@ function paint() {
 paint();
 
 function apply(s) {
-  wrap.classList.toggle("awake", s.status !== "idle");
+  wrap.classList.toggle("awake", s.status !== "idle" && s.status !== "asleep");
 
-  if (s.status !== "idle") {
+  if (s.status !== "idle" && s.status !== "asleep") {
     wrap.classList.add("show");
     clearTimeout(hideTimer);
   } else {

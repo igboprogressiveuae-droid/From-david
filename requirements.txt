@@ -9,3 +9,6 @@ google-auth-httplib2
 
 # Only needed to think with Claude ("brain": "claude" in config.json)
 anthropic>=2.10
+
+# Only needed for the wake phrase ("wake_phrase" in config.json) — listens offline on this Mac
+vosk>=0.3.44

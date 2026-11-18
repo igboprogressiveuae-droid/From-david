@@ -2212,6 +2212,17 @@ def use_brain(name):
     return f"switched to the {name} brain, running {engines.model_for(name)}"
 
 
+SLEEP_NOW = threading.Event()     # the voice session watches this
+
+
+def go_to_sleep():
+    phrase = CFG.get("wake_phrase")
+    if not phrase:
+        return "there's no wake phrase set, so I'd have no way to wake up — I'll keep listening"
+    SLEEP_NOW.set()
+    return f"going to sleep once you've said goodnight — they wake you by saying '{phrase}'"
+
+
 # ---- background jobs (jobs.py) ----
 
 def add_job(task, every_minutes=0, at="", days=""):
@@ -2263,6 +2274,7 @@ ACTIONS = {
     "write_page": write_page, "read_page": read_page, "search_brain": search_brain,
     "ask_brain": ask_brain, "use_brain": use_brain,
     "add_job": add_job, "list_jobs": list_jobs, "remove_job": remove_job,
+    "go_to_sleep": go_to_sleep,
     "check_email": check_email, "read_email": read_email, "send_email": send_email,
     "connect_gmail": connect_gmail, "disconnect_gmail": disconnect_gmail,
     "open_dashboard": open_dashboard,
@@ -2530,6 +2542,8 @@ def declarations():
              "days": s("which days for a clock time: weekdays, weekends, or names like monday, friday — blank for every day"),
              "every_minutes": {"type": "NUMBER", "description": "repeat every this many minutes (5 or more) — leave out if using a clock time"}},
                         "required": ["task"]}},
+        {"name": "go_to_sleep", "description": "Stop listening until they say the wake phrase again. Use when they say go to sleep, goodnight, that's all for now, or stop listening. Say a short goodbye first.",
+         "parameters": {"type": "OBJECT", "properties": {}}},
         {"name": "list_jobs", "description": "Say which background jobs are scheduled.",
          "parameters": {"type": "OBJECT", "properties": {}}},
         {"name": "remove_job", "description": "Stop a background job by its number. Confirm with them first.",

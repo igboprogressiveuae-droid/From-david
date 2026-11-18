@@ -24,3 +24,5 @@ config.json.tmp
 brain/
 memory.json.migrated
 jobs.json
+vosk-model/
+vosk-model.zip

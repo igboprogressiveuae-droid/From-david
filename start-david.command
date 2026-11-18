@@ -20,5 +20,19 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
+# Started at login, by Siri, or by a double-click while already running: one copy only —
+# two would share one microphone.
+if pgrep -f "david_live.py --ui" >/dev/null; then
+  echo "David is already running."
+  exit 0
+fi
+
+# Right after login the internet can take a little while to come up.
+for _ in $(seq 1 24); do
+  curl -s -o /dev/null --max-time 5 https://generativelanguage.googleapis.com && break
+  echo "Waiting for the internet…"
+  sleep 5
+done
+
 .venv/bin/python david_live.py --check || { read -r -p "Press Return to close."; exit 1; }
 .venv/bin/python david_live.py --ui

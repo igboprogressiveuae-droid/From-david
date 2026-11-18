@@ -52,6 +52,7 @@ import macos
 
 from tools import *  # noqa: F401,F403 — the tool hub
 import dashboard_api
+import wake
 import tools
 from tools import (_app_path, _log_args,  # noqa: F401
                    _open_web, _update_config)
@@ -369,6 +370,10 @@ def _interruption_allowed(setting=None, output_name=None):
     return bool(name) and "speakers" not in name
 
 
+class GoToSleep(Exception):
+    """Ends a session on purpose: back to listening for the wake phrase."""
+
+
 class SilenceWatch:
     """Notices a microphone sending nothing but exact digital zeros. That is
        what macOS hands over when Microphone permission is off — no error, just
@@ -427,6 +432,8 @@ class Live:
         self.audio_mime = ""             # the format Google says his voice arrives in
         self.saved_reply = b""           # --save-audio: this reply's sound so far
         self.underflows = 0              # times the speaker ran dry mid-sound
+        self.last_active = time.time()   # last time anyone spoke or a tool ran — for falling asleep
+        self.just_woke = False           # say "I'm here" when the next session starts
 
     def _note_audio_format(self, mime):
         """Log the voice's audio format once. If Google sends a different sample
@@ -513,6 +520,7 @@ class Live:
                 if heard:
                     self.heard_anything = True
                     self.you_said += heard
+                    self.last_active = time.time()
 
                 spoken = (server.get("outputTranscription") or {}).get("text")
                 if spoken:
@@ -662,12 +670,14 @@ class Live:
         quick = [c for c in calls if c.get("name") not in NEEDS_THE_SCREEN]
         screen = [c for c in calls if c.get("name") in NEEDS_THE_SCREEN]
 
+        self.last_active = time.time()
         responses = []
         if quick:
             responses += list(await asyncio.gather(*[self.run_one(c) for c in quick]))
         for c in screen:
             responses.append(await self.run_one(c))
 
+        self.last_active = time.time()
         await ws.send(json.dumps({"toolResponse": {"functionResponses": responses}}))
 
     def play_forever(self):
@@ -747,6 +757,19 @@ class Live:
                 }
             }))
 
+    async def watch_for_sleep(self):
+        """With a wake phrase set: end the session after a quiet spell, or when asked
+           to sleep — never while David is talking or a tool is still running."""
+        minutes = float(CFG.get("sleep_after_minutes") or 0)
+        while True:
+            await asyncio.sleep(2)
+            if self.speaking.is_set() or not self.out.empty():
+                self.last_active = time.time()
+                continue
+            if tools.SLEEP_NOW.is_set() or (minutes and time.time() - self.last_active > minutes * 60):
+                tools.SLEEP_NOW.clear()
+                raise GoToSleep()
+
     async def run(self):
         self.loop = asyncio.get_running_loop()
 
@@ -801,9 +824,22 @@ class Live:
                     log(f"  screen {i + 1}: {screen_label(i)} "
                         f"({r['right'] - r['left']}x{r['bottom'] - r['top']} at x={r['left']})")
 
-            if self.resume_handle:
+            self.last_active = time.time()
+            if self.just_woke and self.resume_handle:
+                self.just_woke = False
+                log("awake — listening")
+                await ws.send(json.dumps({
+                    "clientContent": {
+                        "turns": [{"role": "user", "parts": [{"text":
+                            "[system] He just woke you with the wake phrase. Say only: 'I'm here.' "
+                            "Do not call any tool."}]}],
+                        "turnComplete": True,
+                    }
+                }))
+            elif self.resume_handle:
                 log("reconnected — carry on")
             else:
+                self.just_woke = False
                 log("connected — just talk, and say David when you want him")
                 await ws.send(json.dumps({
                     "clientContent": {
@@ -822,7 +858,50 @@ class Live:
             with sd.RawInputStream(samplerate=MIC_RATE, blocksize=CHUNK, dtype="int16",
                                    channels=1, callback=self.mic_callback,
                                    device=device if device is not None else None):
-                await asyncio.gather(self.send_audio(ws), self.receive(ws), self.announce(ws))
+                jobs = [self.send_audio(ws), self.receive(ws), self.announce(ws)]
+                if CFG.get("wake_phrase"):
+                    jobs.append(self.watch_for_sleep())
+                tasks = [asyncio.create_task(j) for j in jobs]
+                try:
+                    await asyncio.gather(*tasks)
+                finally:
+                    # otherwise a leftover announce() would swallow the next reminder
+                    for t in tasks:
+                        t.cancel()
+
+
+async def wait_for_wake(live, listener):
+    """Asleep: the microphone is heard only by this Mac, until the wake phrase —
+       or until a reminder, timer or job has something to say."""
+    live.loop = asyncio.get_running_loop()
+    tools.NOTIFY = lambda text: live.loop.call_soon_threadsafe(live.notices.put_nowait, text)
+    HUD.set(status="asleep", connected=False, micArmed=False)
+    log(f"asleep — say \"{CFG.get('wake_phrase')}\" to wake me")
+    chunks, silence = queue.Queue(), SilenceWatch()
+    listener.reset()
+
+    def listen():
+        while True:
+            try:
+                raw = chunks.get(timeout=0.5)
+            except queue.Empty:
+                raw = b""
+            if raw and silence.feed(1 if any(raw) else 0, time.time()):
+                log(macos.NO_MIC)
+                tools.NOTIFY(macos.NO_MIC)
+            if raw and listener.heard(raw):
+                return "phrase"
+            if not live.notices.empty():
+                return "notice"
+
+    device = CFG.get("input_device")
+    with sd.RawInputStream(samplerate=MIC_RATE, blocksize=CHUNK, dtype="int16", channels=1,
+                           callback=lambda indata, *_: chunks.put(bytes(indata)),
+                           device=device if device is not None else None):
+        why = await asyncio.to_thread(listen)
+    live.just_woke = why == "phrase"
+    HUD.set(status="idle")
+    log("woke up" if why == "phrase" else "woke up to say something")
 
 
 def _refusal_kind(text):
@@ -847,14 +926,41 @@ def _refusal_kind(text):
     return "retry"
 
 
+def _wake_listener():
+    """The wake-phrase listener, or None to listen all the time (no phrase set, or Vosk missing)."""
+    phrase = CFG.get("wake_phrase")
+    if not phrase:
+        return None
+    problem = wake.available()
+    if problem:
+        log(f"no wake phrase — {problem}. Listening all the time instead.")
+        return None
+    try:
+        return wake.Listener(phrase, MIC_RATE)
+    except Exception as e:
+        log(f"the wake-phrase listener failed ({e}) — listening all the time instead")
+        return None
+
+
 async def stay_connected(live):
-    """Sessions have a time limit and connections drop. Keep coming back."""
+    """Sessions have a time limit and connections drop. Keep coming back.
+       With a wake phrase, he sleeps between conversations."""
+    listener = await asyncio.to_thread(_wake_listener)
+    if listener is None:
+        CFG["wake_phrase"] = ""        # watch_for_sleep and go_to_sleep look at this
+    asleep = listener is not None
     wait = 2
     while True:
+        if asleep:
+            await wait_for_wake(live, listener)
+            asleep = False
         try:
             await live.run()
             HUD.set(connected=False)
             wait = 2
+        except GoToSleep:
+            HUD.set(connected=False)
+            asleep = True
         except Reconnect:
             wait = 2
             await asyncio.sleep(0.3)
@@ -999,6 +1105,16 @@ def doctor():
            "Without it, David reads Gmail off the screen", False)
     report(_HAVE_OAUTH_NOTION and oauth_notion.is_connected(), "Notion connected (optional)",
            "Connect it from the dashboard to journal by voice", False)
+
+    phrase = CFG.get("wake_phrase")
+    if phrase:
+        problem = wake.available()
+        report(problem is None, f'Wake phrase: "{phrase}" — listened for on this Mac, offline',
+               f"{problem} — until then David listens all the time", False)
+        if problem is None and not os.path.isdir(wake.MODEL_DIR):
+            print("       The speech model (about 40 MB) downloads the first time David starts.")
+    else:
+        report(True, "No wake phrase — David listens all the time")
 
     import engines
     import telegram

@@ -30,7 +30,7 @@ MAX_ROUNDS = 10           # tool calls per question before giving up
 MAX_HISTORY = 60          # messages kept before a conversation starts fresh
 # a brain asking itself would loop; and only he, by voice or a Telegram command, picks the brain —
 # never a model that might have just read a web page telling it to
-NOT_FOR_ENGINES = {"ask_brain", "use_brain"}
+NOT_FOR_ENGINES = {"ask_brain", "use_brain", "go_to_sleep"}   # sleep is for the voice session
 
 # Claude models that can retry on another model when a safety check declines
 _FALLBACK_MODELS = ("claude-fable-5-2", "claude-fable-5-1", "claude-opus-5-5",
