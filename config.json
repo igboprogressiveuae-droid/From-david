@@ -21,7 +21,7 @@
   "spoken_acknowledgement": true,
   "duplicate_window": 25,
   "email_mode": "browser",
-  "input_device": null,
+  "input_device": "MacBook Pro Microphone",
   "apps": {
     "chrome": "Google Chrome",
     "edge": "Microsoft Edge",
@@ -69,6 +69,7 @@
   "compact_height": 260,
   "wake_phrase": "wake up david",
   "sleep_after_minutes": 5,
+  "wake_debug": false,
   "brain": "gemini",
   "brain_models": {
     "gemini": "",

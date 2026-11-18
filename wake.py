@@ -14,7 +14,7 @@ import zipfile
 
 import requests
 
-from tools import HERE, log
+from tools import CFG, HERE, log
 
 MODEL_URL = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
 MODEL_DIR = os.path.join(HERE, "vosk-model")
@@ -66,8 +66,8 @@ class Listener:
         if self.phrase and f" {self.phrase} " in f" {text} ":
             self.reset()
             return True
-        if text:
-            log(f'(asleep) heard "{text}"')   # on this Mac only — shows how Vosk hears your voice
+        if text and CFG.get("wake_debug"):     # off by default: it prints what the room says
+            log(f'(asleep) heard "{text}"')
         return False
 
     def reset(self):
