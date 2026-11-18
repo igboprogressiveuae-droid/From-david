@@ -7,8 +7,9 @@ Background jobs: things David does on his own, on a schedule.
 
 Each job is a plain-language task run through the thinking brain with every
 tool. The answer is spoken (if voice is running) and sent on Telegram (if set
-up). A job that finds nothing worth saying stays quiet. Jobs cannot do
-anything that needs a yes — nobody is there to give one.
+up). A job that finds nothing worth saying stays quiet. Jobs have every tool,
+including the screen, mouse and keyboard, but cannot do anything that needs a
+yes (delete, send, shut down) — nobody is there to give one.
 
 Kept in jobs.json next to this file (gitignored). David checks every 30 seconds;
 a job missed while he was off runs once when he starts.
@@ -27,11 +28,6 @@ FILE = os.path.join(HERE, "jobs.json")
 MIN_INTERVAL = 5          # minutes — a tighter loop would burn the API quota for little gain
 QUIET = "NOTHING"         # what a job replies when there's nothing to report
 _LOCK = threading.Lock()
-# Nobody is watching a job, and it may read web pages that try to steer it — so it
-# only gets tools that look things up or write to its own notes. A new tool stays
-# out of jobs until it is added here.
-JOB_TOOLS = {"news", "research", "get_weather", "what_time", "battery", "read_notes",
-             "recall", "remember", "search_brain", "read_page", "write_page", "list_jobs"}
 
 
 def _days(text):
@@ -129,8 +125,7 @@ def run_job(job, ask=None):
     """Run one job now and report it. Returns what it said, or '' if it stayed quiet."""
     import engines
     import telegram
-    ask = ask or (lambda prompt: engines.Conversation("a background job", gate=None,
-                                                          only=JOB_TOOLS).ask(prompt))
+    ask = ask or (lambda prompt: engines.Conversation("a background job", gate=None).ask(prompt))
     prompt = (f"{job['task']}\n\n(This is a scheduled job — nobody is waiting on the other end. "
               f"Do the task with your tools, then write what they should hear, briefly. If there is "
               f"nothing worth telling them, reply with exactly {QUIET}.)")

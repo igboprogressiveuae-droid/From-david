@@ -76,18 +76,16 @@ def json_schema(gemini_schema):
     return gemini_schema
 
 
-def _declarations(only=None):
-    return [d for d in tools.declarations()
-            if d["name"] not in NOT_FOR_ENGINES and (only is None or d["name"] in only)]
+def _declarations():
+    return [d for d in tools.declarations() if d["name"] not in NOT_FOR_ENGINES]
 
 
 class Conversation:
     """One running conversation with the brain — a Telegram chat, a job, a
        question from voice. ask() blocks; call it off the event loop."""
 
-    def __init__(self, channel, gate=None, only=None):
+    def __init__(self, channel, gate=None):
         self.channel = channel
-        self.only = only              # if set, the only tools it may use, and none may open a window
         self.gate = gate              # None: anything needing a yes is refused
         self.provider = None
         self.history = []             # in the provider's own format, append-only
@@ -112,15 +110,13 @@ class Conversation:
             "openrouter": (self._openrouter_turn, self._openrouter_results),
         }[provider]
         self._add_user(provider, text)
-        system, decls = self.system(), _declarations(self.only)
+        system, decls = self.system(), _declarations()
         try:
             for _ in range(MAX_ROUNDS):
                 reply, calls = turn(system, decls)
                 if not calls:
                     return reply.strip() or "Done."
                 allowed = {d["name"] for d in decls}
-                if self.only is not None:      # research/news would otherwise open sources on screen
-                    calls = [(i, n, {k: v for k, v in a.items() if k != "open_links"}) for i, n, a in calls]
                 add_results([(call_id, name, tools.run(name, args, self.gate) if name in allowed
                               else f"{name} is not available here")
                              for call_id, name, args in calls])
