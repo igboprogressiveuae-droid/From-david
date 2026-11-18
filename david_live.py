@@ -278,19 +278,20 @@ class Hud:
         page = "http://127.0.0.1:8765/dashboard.html" if CFG.get("open_dashboard") else "http://127.0.0.1:8765/david_ui.html"
         log("interface running at " + page)
 
-        app = CFG.get("browsers", {}).get(CFG.get("ui_browser", "edge"))
-        if app and app != "Safari" and _app_path(app):
-            macos.open_app_window(app, page)
-        else:
-            _open_web(page)
+        if not os.environ.get("DAVID_APP"):     # David.app shows the page in its own window
+            app = CFG.get("browsers", {}).get(CFG.get("ui_browser", "edge"))
+            if app and app != "Safari" and _app_path(app):
+                macos.open_app_window(app, page)
+            else:
+                _open_web(page)
 
-        # give it a moment to appear, then park it on the interface screen —
-        # only when there is a spare one; on a single screen it would cover his work
-        await asyncio.sleep(2.5)
-        screens = monitors()
-        idx = int(CFG.get("ui_monitor", 2)) - 1
-        if len(screens) > 1 and 0 <= idx < len(screens):
-            await asyncio.to_thread(move_window, idx + 1)
+            # give it a moment to appear, then park it on the interface screen —
+            # only when there is a spare one; on a single screen it would cover his work
+            await asyncio.sleep(2.5)
+            screens = monitors()
+            idx = int(CFG.get("ui_monitor", 2)) - 1
+            if len(screens) > 1 and 0 <= idx < len(screens):
+                await asyncio.to_thread(move_window, idx + 1)
 
         slow = 0
         while True:

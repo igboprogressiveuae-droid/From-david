@@ -20,8 +20,13 @@ Originally built for Windows by Ibans. This version runs on macOS.
 4. `python david_live.py --check` — checks your key, models, microphone, permissions and browsers, and says how to fix anything wrong
 5. `python david_live.py --ui`
 
+## David as a Mac app
+`app/build.sh` builds **David.app** into Applications (needs Xcode's command-line tools for `swiftc`). Open it like any app: it starts David and shows his screen in its own window. Closing the window keeps him listening; click the Dock icon to bring it back, and quit with ⌘Q. His output goes to `david.log`.
+
+Rebuilding the app gives it a new signature, so macOS may ask for its permissions again.
+
 ## Permissions
-Turn these on for the app you run David from (Terminal, iTerm or VS Code) in **System Settings → Privacy & Security**, then restart David:
+Turn these on for **David** (or, without the app, for the app you run him from: Terminal, iTerm or VS Code) in **System Settings → Privacy & Security**, then restart David:
 
 | Permission | What it's for |
 |---|---|
@@ -39,7 +44,7 @@ If one is missing, David says which — he won't pretend a click worked.
 - **Wake him by voice.** David sleeps until you say **"Wake up David"** as one sentence ("wake up David, what's the weather?" works too). Until then the microphone is heard only by this Mac — [Vosk](https://alphacephei.com/vosk/) listens offline, and nothing goes to Google.
 - **He falls back asleep** after 5 quiet minutes, or when you say "go to sleep" or "goodnight". A reminder, timer or job result wakes him so he can tell you.
 - **Change the phrase** with `"wake_phrase"` in `config.json`, and the nap time with `"sleep_after_minutes"`. Set `"wake_phrase": ""` for the old behaviour: always listening.
-- **Start at login.** Add `start-david.command` to System Settings → General → Login Items (remove it there to stop). It waits for the internet and never starts a second copy.
+- **Start at login.** Add David.app (or `start-david.command`) to System Settings → General → Login Items (remove it there to stop). It waits for the internet and never starts a second copy.
 - **Which microphone:** `"input_device"` in `config.json` (now the MacBook's own). Leave it `null` to follow macOS — but then AirPods in their case mean David hears silence.
 - `"wake_debug": true` prints every sentence the sleeping listener hears, to see how it hears your voice. Leave it off otherwise.
 - The speech model (about 130 MB) downloads the first time he starts, into `vosk-model/`.

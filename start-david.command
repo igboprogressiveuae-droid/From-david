@@ -35,4 +35,5 @@ for _ in $(seq 1 24); do
 done
 
 .venv/bin/python david_live.py --check || { read -r -p "Press Return to close."; exit 1; }
-.venv/bin/python david_live.py --ui
+# exec: David.app stops him by stopping this script
+exec .venv/bin/python david_live.py --ui
