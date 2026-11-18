@@ -28,8 +28,10 @@ MIN_INTERVAL = 5          # minutes — a tighter loop would burn the API quota 
 QUIET = "NOTHING"         # what a job replies when there's nothing to report
 _LOCK = threading.Lock()
 # Nobody is watching a job, and it may read web pages that try to steer it — so it
-# never gets the mouse, the keyboard, the screen or a new window.
-NO_SCREEN = tools.NEEDS_THE_SCREEN | tools.REPEATABLE | tools.OPENS_A_WINDOW
+# only gets tools that look things up or write to its own notes. A new tool stays
+# out of jobs until it is added here.
+JOB_TOOLS = {"news", "research", "get_weather", "what_time", "battery", "read_notes",
+             "recall", "remember", "search_brain", "read_page", "write_page", "list_jobs"}
 
 
 def _days(text):
@@ -128,7 +130,7 @@ def run_job(job, ask=None):
     import engines
     import telegram
     ask = ask or (lambda prompt: engines.Conversation("a background job", gate=None,
-                                                          without=NO_SCREEN).ask(prompt))
+                                                          only=JOB_TOOLS).ask(prompt))
     prompt = (f"{job['task']}\n\n(This is a scheduled job — nobody is waiting on the other end. "
               f"Do the task with your tools, then write what they should hear, briefly. If there is "
               f"nothing worth telling them, reply with exactly {QUIET}.)")

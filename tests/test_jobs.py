@@ -89,9 +89,30 @@ class Jobs(unittest.TestCase):
 
     def test_jobs_never_get_the_screen_mouse_or_keyboard(self):
         import engines
-        names = {d["name"] for d in engines._declarations(jobs.NO_SCREEN)}
-        self.assertFalse({"click_on", "type_text", "press_key", "reply_in_gmail", "open_url"} & names)
-        self.assertTrue({"news", "research", "recall", "search_brain"} <= names)
+        names = {d["name"] for d in engines._declarations(jobs.JOB_TOOLS)}
+        self.assertEqual(names, jobs.JOB_TOOLS)     # every allowed tool exists, nothing else gets in
+        self.assertFalse({"click_on", "describe_screen", "read_clipboard", "connect_gmail"} & names)
+
+    def test_a_job_cannot_open_sources_on_screen(self):
+        import engines
+        tools.CFG["brain"] = "gemini"
+        got, replies = [], [
+            {"candidates": [{"content": {"role": "model", "parts": [
+                {"functionCall": {"name": "news", "args": {"topic": "gold", "open_links": True}}}]}}]},
+            {"candidates": [{"content": {"role": "model", "parts": [{"text": "ok"}]}}]}]
+
+        class R:
+            ok, status_code = True, 200
+            def __init__(self, d): self.d = d
+            def json(self): return self.d
+        saved_post, saved_news = tools._gemini_post, tools.ACTIONS["news"]
+        tools._gemini_post = lambda body, model=None, timeout=90: R(replies.pop(0))
+        tools.ACTIONS["news"] = lambda **kw: got.append(kw) or "headlines"
+        try:
+            engines.Conversation("a job", only=jobs.JOB_TOOLS).ask("news")
+        finally:
+            tools._gemini_post, tools.ACTIONS["news"] = saved_post, saved_news
+        self.assertEqual(got, [{"topic": "gold"}])
 
     def test_remove(self):
         job = jobs.add("x", at="7am")
