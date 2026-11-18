@@ -2191,6 +2191,28 @@ def write_file(name, content):
     return f"saved {os.path.basename(path)} to the desktop"
 
 
+# ---- the swappable brain (engines.py) ----
+
+def ask_brain(question):
+    """Voice hands a hard question to whichever brain is chosen in config.json."""
+    import engines
+    return engines.ask_once(question)
+
+
+def use_brain(name):
+    import engines
+    name = str(name).strip().lower()
+    if name not in engines.PROVIDERS:
+        return f"I only know these brains: {', '.join(engines.PROVIDERS)}"
+    problem = engines.missing_key(name)
+    if problem:
+        return f"can't switch to {name} yet: {problem}"
+    CFG["brain"] = name
+    _update_config(brain=name)
+    return f"switched to the {name} brain, running {engines.model_for(name)}"
+
+
+
 ACTIONS = {
     "open_app": open_app, "open_site": open_site, "open_url": open_url,
     "search_web": search_web, "open_file": open_file, "find_files": find_files,
@@ -2214,6 +2236,7 @@ ACTIONS = {
     "list_drives": list_drives, "copy_file": copy_file,
     "remember": remember, "recall": recall, "forget": forget,
     "write_page": write_page, "read_page": read_page, "search_brain": search_brain,
+    "ask_brain": ask_brain, "use_brain": use_brain,
     "check_email": check_email, "read_email": read_email, "send_email": send_email,
     "connect_gmail": connect_gmail, "disconnect_gmail": disconnect_gmail,
     "open_dashboard": open_dashboard,
@@ -2238,7 +2261,7 @@ OPENS_A_WINDOW = {
 # these take over the mouse, keyboard or foreground, so they cannot overlap
 # jobs long enough that silence would feel like nothing is happening
 SLOW_JOBS = {
-    "check_email", "check_gmail", "read_email", "open_gmail_message",
+    "ask_brain", "check_email", "check_gmail", "read_email", "open_gmail_message",
     "check_chat", "research", "news", "show_image", "click_on", "describe_screen",
     "journal", "notion_table",
 }
@@ -2466,6 +2489,10 @@ def declarations():
          "parameters": {"type": "OBJECT", "properties": {"about": s("topic to filter by, optional")}}},
         {"name": "forget", "description": "Drop something from memory. Confirm with them first.",
          "parameters": {"type": "OBJECT", "properties": {"about": s("what to forget")}, "required": ["about"]}},
+        {"name": "ask_brain", "description": "Hand a hard question — one needing careful reasoning, several steps, or writing — to your thinking brain (Gemini, Claude or another model, whichever they chose), which can use every tool you have. Tell them you are thinking it over first; it can take a minute. Read its answer back in your own words, briefly.",
+         "parameters": {"type": "OBJECT", "properties": {"question": s("the full question, with everything it needs to know")}, "required": ["question"]}},
+        {"name": "use_brain", "description": "Switch which model does the thinking for typed chats, background jobs and ask_brain: gemini, claude or openrouter. Your voice stays the same.",
+         "parameters": {"type": "OBJECT", "properties": {"name": s("gemini, claude or openrouter")}, "required": ["name"]}},
         {"name": "write_page", "description": "Write a longer note into your Second Brain wiki — research results, how something works, a person's details, a plan. Use remember for one-line facts. Link related pages with [[Page Title]].",
          "parameters": {"type": "OBJECT", "properties": {"title": s("page title"), "text": s("what to write, in Markdown"),
                                                         "append": {"type": "BOOLEAN", "description": "false to replace the page; default adds a dated section"}},

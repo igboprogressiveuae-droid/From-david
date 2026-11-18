@@ -66,5 +66,13 @@
   "search_thinking": "low",
   "display_mode": "full",
   "compact_width": 320,
-  "compact_height": 260
+  "compact_height": 260,
+  "brain": "gemini",
+  "brain_models": {
+    "gemini": "",
+    "claude": "claude-opus-5-5",
+    "openrouter": "openrouter/auto"
+  },
+  "claude_effort": "medium",
+  "brain_dir": ""
 }
