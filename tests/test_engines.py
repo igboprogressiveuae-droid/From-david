@@ -44,7 +44,14 @@ class Engines(unittest.TestCase):
     def test_claude_without_a_key_says_so(self):
         saved = os.environ.pop("ANTHROPIC_API_KEY", None)
         try:
-            self.assertIn("ANTHROPIC_API_KEY", engines.missing_key("claude") or "")
+            if engines.importlib.util.find_spec("anthropic") is None:
+                self.skipTest("anthropic is not installed")
+            import anthropic.lib.credentials as creds
+            real, creds.default_credentials = creds.default_credentials, lambda: None
+            try:
+                self.assertIn("ant login", engines.missing_key("claude") or "")
+            finally:
+                creds.default_credentials = real
         finally:
             if saved is not None:
                 os.environ["ANTHROPIC_API_KEY"] = saved

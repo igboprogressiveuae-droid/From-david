@@ -62,8 +62,10 @@ def missing_key(provider):
     if provider == "claude":
         if importlib.util.find_spec("anthropic") is None:
             return "the Claude brain needs the anthropic package: .venv/bin/pip install anthropic"
-        if not os.environ.get("ANTHROPIC_API_KEY"):
-            return "ANTHROPIC_API_KEY is not set in .env"
+        from anthropic.lib.credentials import default_credentials   # a sign-in saved by the `ant` tool
+        if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")
+                or default_credentials()):
+            return "Claude isn't signed in — run `ant login`, or put ANTHROPIC_API_KEY in .env"
     return None
 
 
