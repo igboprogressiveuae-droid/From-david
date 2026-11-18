@@ -2212,6 +2212,31 @@ def use_brain(name):
     return f"switched to the {name} brain, running {engines.model_for(name)}"
 
 
+# ---- background jobs (jobs.py) ----
+
+def add_job(task, every_minutes=0, at="", days=""):
+    import jobs
+    try:
+        job = jobs.add(task, every_minutes=every_minutes, at=at, days=days)
+    except ValueError as e:
+        return str(e)
+    return f"scheduled {jobs.describe(job)}. First run {job['next_run'].replace('T', ' at ')}"
+
+
+def list_jobs():
+    import jobs
+    items = jobs.load()
+    if not items:
+        return "no jobs scheduled"
+    rows = [{"primary": j["task"], "secondary": jobs.describe(j).split(":")[0]} for j in items]
+    return Panel("; ".join(jobs.describe(j) for j in items), "list", title="Jobs", items=rows)
+
+
+def remove_job(job_id):
+    import jobs
+    return f"removed job {job_id}" if jobs.remove(job_id) else f"there is no job {job_id}"
+
+
 
 ACTIONS = {
     "open_app": open_app, "open_site": open_site, "open_url": open_url,
@@ -2237,6 +2262,7 @@ ACTIONS = {
     "remember": remember, "recall": recall, "forget": forget,
     "write_page": write_page, "read_page": read_page, "search_brain": search_brain,
     "ask_brain": ask_brain, "use_brain": use_brain,
+    "add_job": add_job, "list_jobs": list_jobs, "remove_job": remove_job,
     "check_email": check_email, "read_email": read_email, "send_email": send_email,
     "connect_gmail": connect_gmail, "disconnect_gmail": disconnect_gmail,
     "open_dashboard": open_dashboard,
@@ -2281,7 +2307,7 @@ REPEATABLE = {
     "volume", "media",
 }
 
-DESTRUCTIVE = {"delete_file", "rename_file", "write_file", "lock", "copy_file", "forget",
+DESTRUCTIVE = {"add_job", "remove_job", "delete_file", "rename_file", "write_file", "lock", "copy_file", "forget",
                "send_email", "send_open_gmail",
                "close_app", "shutdown", "restart", "sleep_pc", "empty_bin"}
 
@@ -2368,6 +2394,10 @@ def _describe_destructive(name, args):
         "restart": lambda a: "restart the computer",
         "sleep_pc": lambda a: "put the computer to sleep",
         "empty_bin": lambda a: "empty the Trash",
+        "add_job": lambda a: (f"run '{a.get('task', 'that')}' " +
+                              (f"every {a['every_minutes']} minutes" if a.get("every_minutes")
+                               else f"at {a.get('at', '')} {a.get('days') or 'every day'}") + " from now on"),
+        "remove_job": lambda a: f"remove job {a.get('job_id', '')}",
     }
     try:
         return phrasing.get(name, lambda a: name)(args)
@@ -2493,6 +2523,17 @@ def declarations():
          "parameters": {"type": "OBJECT", "properties": {"question": s("the full question, with everything it needs to know")}, "required": ["question"]}},
         {"name": "use_brain", "description": "Switch which model does the thinking for typed chats, background jobs and ask_brain: gemini, claude or openrouter. Your voice stays the same.",
          "parameters": {"type": "OBJECT", "properties": {"name": s("gemini, claude or openrouter")}, "required": ["name"]}},
+        {"name": "add_job", "description": "Schedule something to do on its own, again and again: at a clock time (optionally on certain days) or every so many minutes. The task is plain words, done with all your tools, and the result is spoken and sent to their Telegram. Use for 'every morning', 'every hour', 'each Friday', 'keep an eye on'. For a one-off at a time, use set_reminder instead.",
+         "parameters": {"type": "OBJECT", "properties": {
+             "task": s("what to do each time, written as an instruction to yourself"),
+             "at": s("a clock time like 7am or 18:30 — leave out if using every_minutes"),
+             "days": s("which days for a clock time: weekdays, weekends, or names like monday, friday — blank for every day"),
+             "every_minutes": {"type": "NUMBER", "description": "repeat every this many minutes (5 or more) — leave out if using a clock time"}},
+                        "required": ["task"]}},
+        {"name": "list_jobs", "description": "Say which background jobs are scheduled.",
+         "parameters": {"type": "OBJECT", "properties": {}}},
+        {"name": "remove_job", "description": "Stop a background job by its number. Confirm with them first.",
+         "parameters": {"type": "OBJECT", "properties": {"job_id": s("the job number")}, "required": ["job_id"]}},
         {"name": "write_page", "description": "Write a longer note into your Second Brain wiki — research results, how something works, a person's details, a plan. Use remember for one-line facts. Link related pages with [[Page Title]].",
          "parameters": {"type": "OBJECT", "properties": {"title": s("page title"), "text": s("what to write, in Markdown"),
                                                         "append": {"type": "BOOLEAN", "description": "false to replace the page; default adds a dated section"}},
