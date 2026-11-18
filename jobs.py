@@ -27,6 +27,9 @@ FILE = os.path.join(HERE, "jobs.json")
 MIN_INTERVAL = 5          # minutes — a tighter loop would burn the API quota for little gain
 QUIET = "NOTHING"         # what a job replies when there's nothing to report
 _LOCK = threading.Lock()
+# Nobody is watching a job, and it may read web pages that try to steer it — so it
+# never gets the mouse, the keyboard, the screen or a new window.
+NO_SCREEN = tools.NEEDS_THE_SCREEN | tools.REPEATABLE | tools.OPENS_A_WINDOW
 
 
 def _days(text):
@@ -124,7 +127,8 @@ def run_job(job, ask=None):
     """Run one job now and report it. Returns what it said, or '' if it stayed quiet."""
     import engines
     import telegram
-    ask = ask or (lambda prompt: engines.Conversation("a background job", gate=None).ask(prompt))
+    ask = ask or (lambda prompt: engines.Conversation("a background job", gate=None,
+                                                          without=NO_SCREEN).ask(prompt))
     prompt = (f"{job['task']}\n\n(This is a scheduled job — nobody is waiting on the other end. "
               f"Do the task with your tools, then write what they should hear, briefly. If there is "
               f"nothing worth telling them, reply with exactly {QUIET}.)")

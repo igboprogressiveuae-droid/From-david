@@ -87,6 +87,12 @@ class Jobs(unittest.TestCase):
         self.assertIn("needs them to say yes", tools.run("add_job", {"task": "x", "at": "7am"}, gate=None))
         self.assertEqual(jobs.load(), [])
 
+    def test_jobs_never_get_the_screen_mouse_or_keyboard(self):
+        import engines
+        names = {d["name"] for d in engines._declarations(jobs.NO_SCREEN)}
+        self.assertFalse({"click_on", "type_text", "press_key", "reply_in_gmail", "open_url"} & names)
+        self.assertTrue({"news", "research", "recall", "search_brain"} <= names)
+
     def test_remove(self):
         job = jobs.add("x", at="7am")
         self.assertTrue(jobs.remove(f"#{job['id']}"))

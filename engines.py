@@ -76,16 +76,17 @@ def json_schema(gemini_schema):
     return gemini_schema
 
 
-def _declarations():
-    return [d for d in tools.declarations() if d["name"] not in NOT_FOR_ENGINES]
+def _declarations(without=()):
+    return [d for d in tools.declarations() if d["name"] not in NOT_FOR_ENGINES | set(without)]
 
 
 class Conversation:
     """One running conversation with the brain — a Telegram chat, a job, a
        question from voice. ask() blocks; call it off the event loop."""
 
-    def __init__(self, channel, gate=None):
+    def __init__(self, channel, gate=None, without=()):
         self.channel = channel
+        self.without = set(without)   # tools this conversation may not use at all
         self.gate = gate              # None: anything needing a yes is refused
         self.provider = None
         self.history = []             # in the provider's own format, append-only
@@ -110,7 +111,7 @@ class Conversation:
             "openrouter": (self._openrouter_turn, self._openrouter_results),
         }[provider]
         self._add_user(provider, text)
-        system, decls = self.system(), _declarations()
+        system, decls = self.system(), _declarations(self.without)
         try:
             for _ in range(MAX_ROUNDS):
                 reply, calls = turn(system, decls)
