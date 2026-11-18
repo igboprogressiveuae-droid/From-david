@@ -507,6 +507,7 @@ class Live:
                             lastLine=(self.said or self.you_said).strip()[:4000])
                     if self.you_said.strip():
                         print(f"    you: {self.you_said.strip()}", flush=True)
+                        BRAIN.log_turn("voice", CFG.get("owner_name") or "you", self.you_said)
                         # Kept separately from the buffer below so a destructive
                         # action can check what he actually just said, rather
                         # than trusting the model's word for it.
@@ -514,6 +515,7 @@ class Live:
                         self.last_user_utterance_at = time.time()
                     if self.said.strip():
                         print(f"  David: {self.said.strip()}", flush=True)
+                        BRAIN.log_turn("voice", "David", self.said)
                     self.you_said = self.said = ""
                     self.spoke_this_turn = False
                 for part in (server.get("modelTurn") or {}).get("parts", []):

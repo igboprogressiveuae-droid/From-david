@@ -40,6 +40,7 @@ if sys.platform != "darwin":
 import requests
 
 import macos
+from brain import Brain
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -422,98 +423,68 @@ def screenshot():
     return f"saved {name} to the desktop"
 
 
-# ---- things he has told David to remember ----
+# ---- the Second Brain: what he has told David, and what David writes down ----
 
-MEMORY_FILE = os.path.join(HERE, "memory.json")
-
-
-def _load_memory():
-    if not os.path.exists(MEMORY_FILE):
-        return []
-    try:
-        with open(MEMORY_FILE, encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, list) else []
-    except (ValueError, OSError):
-        return []
-
-
-def _save_memory(items):
-    with open(MEMORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(items[-300:], f, indent=1, ensure_ascii=False)
+BRAIN = Brain(expand(CFG.get("brain_dir") or os.path.join(HERE, "brain")),
+              legacy_json=os.path.join(HERE, "memory.json"))
 
 
 def remember(fact, category="general"):
     """Keep something he said for every session from now on."""
-    items = _load_memory()
-
-    # replace anything that is clearly the same fact rather than stacking
-    def key_words(text):
-        cleaned = re.sub(r"[^a-z0-9 ]", " ", text.lower())
-        return set(w for w in cleaned.split() if len(w) > 3)
-
-    words = key_words(fact)
-    for existing in list(items):
-        old = key_words(existing["fact"])
-        if not words or not old:
-            continue
-        overlap = len(words & old) / min(len(words), len(old))
-        if overlap >= 0.7:
-            log("replacing an older version of that memory")
-            items.remove(existing)
-
-    items.append({"fact": fact.strip(), "category": category,
-                  "learned": datetime.now().strftime("%Y-%m-%d")})
-    _save_memory(items)
+    if BRAIN.remember(fact, category):
+        log("replacing an older version of that memory")
     return "noted, I will remember that"
 
 
 def recall(about=""):
     """What he has told David, optionally filtered."""
-    items = _load_memory()
+    items = BRAIN.facts()
     if not items:
         return "you have not told me anything to remember yet"
     if about:
         needle = about.lower()
-        items = [i for i in items if needle in i["fact"].lower() or needle in i["category"].lower()]
+        items = [i for i in items if needle in i[2].lower() or needle in i[0]]
         if not items:
             return f"nothing about {about}"
-    recent = items[-15:]
-    speech = "; ".join(i["fact"] for i in recent)
-    rows = [{"primary": i["fact"], "secondary": f'{i["category"]} · {i["learned"]}'}
-           for i in reversed(recent)]
+    recent = sorted(items, key=lambda i: i[1])[-15:]
+    speech = "; ".join(i[2] for i in recent)
+    rows = [{"primary": fact, "secondary": f"{cat} · {day}"} for cat, day, fact in reversed(recent)]
     return Panel(speech, "list", title="Remembered" + (f" — {about}" if about else ""), items=rows)
 
 
 def forget(about):
     """Drop anything matching what he describes."""
-    items = _load_memory()
-    needle = about.lower()
-    keep = [i for i in items if needle not in i["fact"].lower() and needle not in i["category"].lower()]
-    dropped = len(items) - len(keep)
+    dropped = BRAIN.forget(about)
     if not dropped:
         return f"I had nothing about {about}"
-    _save_memory(keep)
     return f"forgotten — dropped {dropped} thing{'s' if dropped != 1 else ''}"
 
 
 def memory_for_prompt():
-    items = _load_memory()
-    if not items:
-        return ""
-    # Every category caps its own tail below, but with enough categories that
-    # still grows the prompt — and the cost — without bound as he uses David
-    # for longer. Keep only the most recent 80 facts overall, newest last.
-    items = items[-80:]
-    by_cat = {}
-    for i in items:
-        by_cat.setdefault(i["category"], []).append(i["fact"])
-    lines = []
-    for cat, facts in by_cat.items():
-        lines.append(f"  {cat}:")
-        lines += [f"    - {f}" for f in facts[-25:]]
-    return ("\n\nThings they have told you to remember. Treat these as true and act on them "
-            "without being reminded:\n" + "\n".join(lines))
+    return BRAIN.for_prompt()
+
+
+def write_page(title, text, append=True):
+    """A longer note in the brain's wiki — for knowledge, not one-line facts."""
+    where = BRAIN.write_page(title, text, append=append)
+    return f"saved to {where} in the brain"
+
+
+def read_page(name):
+    text = BRAIN.read(name)
+    if text is None:
+        hits = BRAIN.search(name, limit=5)
+        if not hits:
+            return f"there is no note called {name}"
+        return "no note by that name. Closest: " + "; ".join(p for p, _ in hits)
+    return text[-6000:]     # shortcut: tail of very long notes only; add paging if pages grow
+
+
+def search_brain(query):
+    hits = BRAIN.search(query)
+    if not hits:
+        return f"nothing in the brain about {query}"
+    return "\n".join(f"{p}: {line}" for p, line in hits)
 
 
 # ---- email ----
@@ -2242,6 +2213,7 @@ ACTIONS = {
     "move_window": move_window, "show_image": show_image,
     "list_drives": list_drives, "copy_file": copy_file,
     "remember": remember, "recall": recall, "forget": forget,
+    "write_page": write_page, "read_page": read_page, "search_brain": search_brain,
     "check_email": check_email, "read_email": read_email, "send_email": send_email,
     "connect_gmail": connect_gmail, "disconnect_gmail": disconnect_gmail,
     "open_dashboard": open_dashboard,
@@ -2400,6 +2372,14 @@ def declarations():
          "parameters": {"type": "OBJECT", "properties": {"about": s("topic to filter by, optional")}}},
         {"name": "forget", "description": "Drop something from memory. Confirm with them first.",
          "parameters": {"type": "OBJECT", "properties": {"about": s("what to forget")}, "required": ["about"]}},
+        {"name": "write_page", "description": "Write a longer note into your Second Brain wiki — research results, how something works, a person's details, a plan. Use remember for one-line facts. Link related pages with [[Page Title]].",
+         "parameters": {"type": "OBJECT", "properties": {"title": s("page title"), "text": s("what to write, in Markdown"),
+                                                        "append": {"type": "BOOLEAN", "description": "false to replace the page; default adds a dated section"}},
+                        "required": ["title", "text"]}},
+        {"name": "read_page", "description": "Read a page from your Second Brain: a wiki title, or a path such as conversations/2026-11-18 for that day's conversations.",
+         "parameters": {"type": "OBJECT", "properties": {"name": s("page title or path")}, "required": ["name"]}},
+        {"name": "search_brain", "description": "Search every note in your Second Brain for words.",
+         "parameters": {"type": "OBJECT", "properties": {"query": s("words to look for")}, "required": ["query"]}},
 
         {"name": "open_dashboard", "description": "Open the settings dashboard where they can connect tools or change the display mode.",
          "parameters": {"type": "OBJECT", "properties": {}}},

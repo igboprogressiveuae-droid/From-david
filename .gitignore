@@ -19,3 +19,8 @@ config.json.tmp
 
 # macOS
 .DS_Store
+
+# The Second Brain and background jobs are personal
+brain/
+memory.json.migrated
+jobs.json
