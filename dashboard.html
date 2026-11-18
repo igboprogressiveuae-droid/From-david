@@ -40,13 +40,69 @@
   .field { margin-bottom: 10px; }
   .hint { font-family: var(--mono); font-size: 10px; color: var(--dim); margin-top: -6px; margin-bottom: 14px; }
   .hint a { color: var(--cyan); }
+  .log { max-height: 280px; overflow-y: auto; margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .msg { font-size: 13px; line-height: 1.5; white-space: pre-wrap; padding: 8px 10px; border-left: 2px solid var(--edge); }
+  .msg.you { color: var(--dim); }
+  .msg.david { border-left-color: var(--cyan); }
+  .list { list-style: none; margin: 0 0 14px; padding: 0; font-size: 13px; }
+  .list li { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; border-bottom: 1px solid rgba(56,170,240,.1); }
+  .list li span { flex: 1; line-height: 1.5; }
+  .list li small { display: block; color: var(--dim); font-family: var(--mono); font-size: 10px; }
+  .list li button { padding: 4px 10px; }
+  .wrap { flex-wrap: wrap; }
 </style>
 </head>
 <body>
   <h1>David — Settings</h1>
-  <div class="sub">CONNECTED TOOLS</div>
+  <div class="sub">CHAT · BRAIN · JOBS · CONNECTED TOOLS</div>
 
   <div class="grid">
+    <div class="card">
+      <h2><span class="dot on"></span> Chat</h2>
+      <p>Type to David's thinking brain. Same tools as voice; anything that needs a yes asks first — reply "yes" here.</p>
+      <div class="log" id="chatLog"></div>
+      <div class="row">
+        <input id="chatText" type="text" placeholder="Ask David something…" />
+        <button id="chatSend">Send</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="dot on"></span> Thinking brain</h2>
+      <p>Answers typed chats, Telegram, jobs and hard questions. Voice always uses Gemini Live.</p>
+      <div class="row wrap" id="brainButtons"></div>
+      <div class="hint" id="brainStatus" style="margin-top:10px"></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="dot" id="jobsDot"></span> Background jobs</h2>
+      <p>Tasks David runs on his own — the result is spoken and sent on Telegram, or nothing if there's nothing to say.</p>
+      <ul class="list" id="jobList"></ul>
+      <div class="field"><input id="jobTask" type="text" placeholder="What to do — e.g. give me the gold and oil news" /></div>
+      <div class="row wrap" style="margin-bottom:10px">
+        <input id="jobAt" type="text" placeholder="At a time — 7am" style="flex:1" />
+        <input id="jobDays" type="text" placeholder="Days (blank = daily)" style="flex:2" />
+        <input id="jobEvery" type="text" placeholder="…or every N minutes" style="flex:1" />
+      </div>
+      <div class="row">
+        <button id="jobAdd">Add job</button>
+        <span class="status" id="jobStatus"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="dot on"></span> Second Brain</h2>
+      <p id="notesSummary">Markdown notes David keeps — open the folder in Obsidian.</p>
+      <ul class="list" id="notesRecent"></ul>
+      <div class="hint" id="notesPages"></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="dot" id="tgDot"></span> Telegram</h2>
+      <p>Talk to David from your phone. He answers only your own account.</p>
+      <div class="row"><span class="status" id="tgStatus" style="margin-left:0">checking…</span></div>
+    </div>
+
     <div class="card">
       <h2><span class="dot on"></span> Display</h2>
       <p>Full screen HUD stays on its own monitor. Compact is a small corner popup that appears when David is active and folds away when he goes quiet — like Siri.</p>
@@ -191,6 +247,102 @@
 
     refreshNotion();
     setInterval(refreshNotion, 4000);
+
+    const post = (path, data) => api(path, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data)
+    });
+    const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+    // ---- chat ----
+    function addMsg(who, text) {
+      const log = document.getElementById("chatLog");
+      log.append(el("div", "msg " + who, text));
+      log.scrollTop = log.scrollHeight;
+    }
+    async function sendChat() {
+      const input = document.getElementById("chatText"), btn = document.getElementById("chatSend");
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = ""; btn.disabled = true;
+      addMsg("you", text);
+      const thinking = el("div", "msg david", "thinking…");
+      document.getElementById("chatLog").append(thinking);
+      try {
+        const res = await post("/api/chat", { text });
+        thinking.textContent = res.ok ? res.reply : (res.error || "failed");
+      } catch (e) { thinking.textContent = "David isn't answering — is he running?"; }
+      btn.disabled = false; input.focus();
+    }
+    document.getElementById("chatSend").addEventListener("click", sendChat);
+    document.getElementById("chatText").addEventListener("keydown", e => { if (e.key === "Enter") sendChat(); });
+
+    // ---- thinking brain ----
+    async function refreshBrain() {
+      const s = await api("/api/brain");
+      const box = document.getElementById("brainButtons");
+      box.replaceChildren(...s.brains.map(b => {
+        const btn = el("button", "", b.name);
+        btn.title = b.problem || b.model;
+        if (b.name === s.current) { btn.style.borderColor = "var(--green)"; btn.style.color = "var(--green)"; }
+        if (b.problem) btn.style.opacity = ".45";
+        btn.addEventListener("click", async () => {
+          const res = await post("/api/brain", { name: b.name });
+          document.getElementById("brainStatus").textContent = res.result;
+          refreshBrain();
+        });
+        return btn;
+      }));
+      const now = s.brains.find(b => b.name === s.current);
+      if (!document.getElementById("brainStatus").textContent)
+        document.getElementById("brainStatus").textContent = `Thinking with ${s.current} (${now ? now.model : ""})`;
+    }
+    refreshBrain();
+
+    // ---- jobs ----
+    async function refreshJobs() {
+      const s = await api("/api/jobs");
+      document.getElementById("jobsDot").classList.toggle("on", s.jobs.length > 0);
+      const list = document.getElementById("jobList");
+      if (!s.jobs.length) { list.replaceChildren(el("li", "", "No jobs yet.")); return; }
+      list.replaceChildren(...s.jobs.map(j => {
+        const li = el("li"), text = el("span", "", j.text);
+        text.append(el("small", "", "next: " + j.next_run.replace("T", " ") + (j.last_result ? " · last: " + j.last_result : "")));
+        const rm = el("button", "danger", "Remove");
+        rm.addEventListener("click", async () => { await post("/api/jobs/remove", { id: j.id }); refreshJobs(); });
+        li.append(text, rm);
+        return li;
+      }));
+    }
+    document.getElementById("jobAdd").addEventListener("click", async () => {
+      const v = id => document.getElementById(id).value.trim();
+      const res = await post("/api/jobs/add", { task: v("jobTask"), at: v("jobAt"), days: v("jobDays"), every_minutes: v("jobEvery") });
+      document.getElementById("jobStatus").textContent = res.ok ? "added" : (res.error || "failed");
+      if (res.ok) ["jobTask", "jobAt", "jobDays", "jobEvery"].forEach(id => document.getElementById(id).value = "");
+      refreshJobs();
+    });
+    refreshJobs();
+    setInterval(refreshJobs, 15000);
+
+    // ---- Second Brain ----
+    async function refreshNotes() {
+      const s = await api("/api/notes");
+      document.getElementById("notesSummary").textContent =
+        `${s.fact_count} facts and ${s.pages.length} pages in ${s.folder} — open the folder in Obsidian.`;
+      document.getElementById("notesRecent").replaceChildren(...s.recent.slice().reverse().map(f => el("li", "", f)));
+      document.getElementById("notesPages").textContent = s.pages.length ? "Pages: " + s.pages.join(", ") : "";
+    }
+    refreshNotes();
+    setInterval(refreshNotes, 30000);
+
+    // ---- Telegram ----
+    async function refreshTelegram() {
+      const s = await api("/api/telegram");
+      document.getElementById("tgDot").classList.toggle("on", s.enabled && s.owner_set);
+      document.getElementById("tgStatus").textContent = !s.enabled
+        ? "off — put TELEGRAM_BOT_TOKEN in .env (make a bot with @BotFather)"
+        : s.owner_set ? "on — answering only you" : "on — message the bot once to learn your TELEGRAM_OWNER_ID";
+    }
+    refreshTelegram();
   </script>
 </body>
 </html>

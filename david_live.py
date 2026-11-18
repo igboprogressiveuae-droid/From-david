@@ -51,6 +51,7 @@ import websockets
 import macos
 
 from tools import *  # noqa: F401,F403 — the tool hub
+import dashboard_api
 import tools
 from tools import (_app_path, _log_args,  # noqa: F401
                    _open_web, _update_config)
@@ -164,6 +165,9 @@ class Hud:
                 if self.path == "/api/notion/status":
                     return self._json(oauth_notion.status() if _HAVE_OAUTH_NOTION
                                       else {"connected": False, "page_title": ""})
+                answer = dashboard_api.handle("GET", self.path)
+                if answer:
+                    return self._json(answer[1], answer[0])
                 super().do_GET()
 
             def do_POST(self):
@@ -227,6 +231,13 @@ class Hud:
                     except Exception:
                         pass
                     return self._json({"ok": True, "result": result})
+                try:
+                    body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+                except ValueError:
+                    return self._json({"ok": False, "error": "bad request"}, 400)
+                answer = dashboard_api.handle("POST", self.path, body)
+                if answer:
+                    return self._json(answer[1], answer[0])
                 self.send_response(404)
                 self.end_headers()
 
