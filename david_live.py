@@ -50,7 +50,7 @@ import macos
 
 from tools import *  # noqa: F401,F403 — the tool hub
 import tools
-from tools import (_app_path, _describe_destructive, _is_yes, _log_args,  # noqa: F401
+from tools import (_app_path, _log_args,  # noqa: F401
                    _open_web, _update_config)
 
 UI = "--ui" in sys.argv or "--hud" in sys.argv
@@ -391,9 +391,7 @@ class Live:
         self.said = ""                   # buffers his words so they print as sentences
         self.spoke_this_turn = False     # has he already said something this turn
         self.you_said = ""
-        self.pending_confirm = {}        # destructive actions waiting on a real yes
-        self.last_user_utterance = ""    # what he actually said, last completed turn
-        self.last_user_utterance_at = 0.0
+        self.gate = Gate()               # destructive actions wait here for a real yes
         self.silence = SilenceWatch()
         self.can_interrupt = True        # decided per session, from where the sound goes
         self.audio_mime = ""             # the format Google says his voice arrives in
@@ -511,8 +509,7 @@ class Live:
                         # Kept separately from the buffer below so a destructive
                         # action can check what he actually just said, rather
                         # than trusting the model's word for it.
-                        self.last_user_utterance = self.you_said.strip()
-                        self.last_user_utterance_at = time.time()
+                        self.gate.heard(self.you_said.strip())
                     if self.said.strip():
                         print(f"  David: {self.said.strip()}", flush=True)
                         BRAIN.log_turn("voice", "David", self.said)
@@ -549,48 +546,12 @@ class Live:
                 # gets read while a job is in progress
                 asyncio.create_task(self.handle_tools(ws, call.get("functionCalls", [])))
 
-    def _destructive_gate(self, name, args):
-        """The real confirmation check for delete/send/shutdown/etc. — code,
-           not a prompt instruction the model can skip under pressure.
-
-           First call for a given action: nothing runs. We remember it is
-           pending and hand back a line telling the model to ask him out loud
-           and call again. Second call: only proceeds if a turn has actually
-           finished since we asked, and what he said in it reads as a yes.
-           A misheard word can trigger the first call; it cannot by itself
-           trigger the second, because that requires a completed user turn
-           in between that we independently classify as an answer.
-
-           Returns a string to hand back instead of running the action, or
-           None once it is genuinely cleared to proceed."""
-        key = name + json.dumps(args, sort_keys=True)
-        pending_at = self.pending_confirm.get(key)
-        now = time.time()
-
-        if pending_at is None or now - pending_at > 45:
-            self.pending_confirm[key] = now
-            desc = _describe_destructive(name, args)
-            log("confirmation required:", name, _log_args(args))
-            return (f"CONFIRMATION_REQUIRED. Do not perform this action. Ask them clearly: "
-                    f"'Are you sure you want me to {desc}?' Wait for them to answer, then call "
-                    f"{name} again with the exact same details only if they say yes.")
-
-        if self.last_user_utterance_at <= pending_at:
-            return "They have not answered yet — ask again and wait for a real yes or no before calling this again."
-
-        del self.pending_confirm[key]
-        if _is_yes(self.last_user_utterance):
-            log("confirmed:", name, _log_args(args))
-            return None
-        log("declined:", name, _log_args(args), "— heard:", repr(self.last_user_utterance))
-        return "They did not confirm that — left it alone."
-
     async def run_one(self, call):
         """Run a single tool and hand back its answer."""
         name, args = call.get("name"), call.get("args") or {}
 
         if name in DESTRUCTIVE:
-            gate = self._destructive_gate(name, args)
+            gate = self.gate.check(name, args)
             if gate is not None:
                 HUD.note_action(f"confirm? {name}")
                 return {"id": call.get("id"), "name": name, "response": {"result": gate}}
@@ -622,7 +583,7 @@ class Live:
         elif name in NEEDS_THE_SCREEN:
             # These drive the mouse and keyboard, so they must never overlap.
             # If one is already running, refuse rather than queue.
-            if self.screen_lock.locked():
+            if self.screen_lock.locked() or tools.SCREEN.locked():
                 log(f"skipping {name} — already busy with {self.busy_with}")
                 HUD.set(status="thinking")
                 return {"id": call.get("id"), "name": name, "response": {
@@ -634,7 +595,7 @@ class Live:
             async with self.screen_lock:
                 self.busy_with = name
                 try:
-                    result = await asyncio.to_thread(lambda: fn(**args))
+                    result = await asyncio.to_thread(lambda: tools.with_screen(fn, args))
                 except Exception as e:
                     log("action failed:", e)
                     result = f"that failed: {e}"

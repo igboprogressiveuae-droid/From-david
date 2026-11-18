@@ -33,6 +33,7 @@ class SecondBrain(unittest.TestCase):
         self.b.remember("Lives in Abu Dhabi with family", "people")
         self.b.remember("Lives in Abu Dhabi with family now", "home")
         self.assertEqual([f for _, _, f in self.b.facts()], ["Lives in Abu Dhabi with family now"])
+        self.assertIn("Lives in Abu Dhabi with family", self.read("archive.md"))
 
     def test_hand_written_lines_survive_remember_and_forget(self):
         os.makedirs(os.path.join(self.b.root, "memory"))
@@ -75,6 +76,9 @@ class SecondBrain(unittest.TestCase):
         self.assertIn("Bought at 2,400", page)
         self.assertIn("Sold at 2,600", page)
         self.assertEqual(self.b.search("sold 2,600")[0][0], os.path.join("wiki", "gold"))
+        self.b.write_page("Gold", "Flat now", append=False)
+        self.assertNotIn("Bought", self.b.read("Gold"))
+        self.assertIn("Bought at 2,400", self.read("archive.md"))
 
     def test_conversations_are_logged_by_day(self):
         self.b.log_turn("telegram", "Uche", "hello\nthere", now=datetime(2026, 11, 18, 9, 5))

@@ -2280,6 +2280,56 @@ def _is_yes(text):
     return any(f" {w} " in padded for w in _YES_WORDS)
 
 
+class Gate:
+    """The real confirmation check for delete/send/shutdown/etc. — code, not a
+       prompt instruction the model can skip under pressure. One per channel:
+       the voice session feeds it what he said, Telegram what he typed."""
+
+    def __init__(self):
+        self.pending = {}        # action -> when we asked
+        self.last_heard = ""     # what he actually said or typed, last completed turn
+        self.heard_at = 0.0
+
+    def heard(self, text, at=None):
+        self.last_heard, self.heard_at = text, at if at is not None else time.time()
+
+    def check(self, name, args):
+        """The real confirmation check for delete/send/shutdown/etc. — code,
+           not a prompt instruction the model can skip under pressure.
+
+           First call for a given action: nothing runs. We remember it is
+           pending and hand back a line telling the model to ask him
+           and call again. Second call: only proceeds if a turn has actually
+           finished since we asked, and what he said in it reads as a yes.
+           A misheard word can trigger the first call; it cannot by itself
+           trigger the second, because that requires a completed user turn
+           in between that we independently classify as an answer.
+
+           Returns a string to hand back instead of running the action, or
+           None once it is genuinely cleared to proceed."""
+        key = name + json.dumps(args, sort_keys=True)
+        pending_at = self.pending.get(key)
+        now = time.time()
+
+        if pending_at is None or now - pending_at > 45:
+            self.pending[key] = now
+            desc = _describe_destructive(name, args)
+            log("confirmation required:", name, _log_args(args))
+            return (f"CONFIRMATION_REQUIRED. Do not perform this action. Ask them clearly: "
+                    f"'Are you sure you want me to {desc}?' Wait for them to answer, then call "
+                    f"{name} again with the exact same details only if they say yes.")
+
+        if self.heard_at <= pending_at:
+            return "They have not answered yet — ask again and wait for a real yes or no before calling this again."
+
+        del self.pending[key]
+        if _is_yes(self.last_heard):
+            log("confirmed:", name, _log_args(args))
+            return None
+        log("declined:", name, _log_args(args), "— heard:", repr(self.last_heard))
+        return "They did not confirm that — left it alone."
+
+
 def _describe_destructive(name, args):
     phrasing = {
         "delete_file": lambda a: f"delete {a.get('name', 'that file')}",
@@ -2300,6 +2350,50 @@ def _describe_destructive(name, args):
         return phrasing.get(name, lambda a: name)(args)
     except Exception:
         return name
+
+
+# ---- running a tool from any channel ----
+
+SCREEN = threading.Lock()   # one job at a time drives the mouse and keyboard, whichever channel asked
+
+
+def with_screen(fn, args):
+    with SCREEN:
+        return fn(**args)
+
+
+def run(name, args, gate=None):
+    """Run one tool for a text channel (Telegram, a background job, a thinking
+       engine) and return what it says. The voice session has its own richer
+       runner in david_live.py — this is the same rules, without the voice."""
+    args = args if isinstance(args, dict) else {}
+    fn = ACTIONS.get(name)
+    if not fn:
+        return f"there is no tool called {name}"
+    if name in DESTRUCTIVE:
+        if gate is None:
+            return (f"{name} needs them to say yes first, and nobody can answer here. "
+                    "Tell them to ask for it by voice or on Telegram.")
+        held = gate.check(name, args)
+        if held is not None:
+            return held
+    log("action:", name, _log_args(args))
+    try:
+        if name in NEEDS_THE_SCREEN:
+            if not SCREEN.acquire(blocking=False):
+                return "the screen is busy with another job — try again in a moment"
+            try:
+                result = fn(**args)
+            finally:
+                SCREEN.release()
+        else:
+            result = fn(**args)
+    except Exception as e:
+        log("action failed:", e)
+        result = f"that failed: {e}"
+    if isinstance(result, Panel):
+        result = result.speech
+    return str(result)
 
 
 def declarations():

@@ -60,16 +60,16 @@ class Confirmation(unittest.TestCase):
     def test_destructive_action_needs_a_later_yes(self):
         live = d.Live()
         args = {"name": "report.pdf"}
-        self.assertIn("CONFIRMATION_REQUIRED", live._destructive_gate("delete_file", args))
-        self.assertIn("not answered", live._destructive_gate("delete_file", args))
-        live.last_user_utterance, live.last_user_utterance_at = "yes go ahead", time.time() + 1
-        self.assertIsNone(live._destructive_gate("delete_file", args))
+        self.assertIn("CONFIRMATION_REQUIRED", live.gate.check("delete_file", args))
+        self.assertIn("not answered", live.gate.check("delete_file", args))
+        live.gate.heard("yes go ahead", at=time.time() + 1)
+        self.assertIsNone(live.gate.check("delete_file", args))
 
     def test_destructive_action_declined(self):
         live = d.Live()
-        live._destructive_gate("empty_bin", {})
-        live.last_user_utterance, live.last_user_utterance_at = "no leave it", time.time() + 1
-        self.assertIn("did not confirm", live._destructive_gate("empty_bin", {}))
+        live.gate.check("empty_bin", {})
+        live.gate.heard("no leave it", at=time.time() + 1)
+        self.assertIn("did not confirm", live.gate.check("empty_bin", {}))
 
 
 class Repeats(unittest.TestCase):

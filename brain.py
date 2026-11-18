@@ -6,6 +6,7 @@ David's Second Brain — a folder of Markdown files, readable in Obsidian.
       memory/<category>.md      one bullet per fact:  "- 2026-09-16 · fact"
       wiki/<title>.md           longer pages David writes and reads, with [[links]]
       conversations/<day>.md    what was said, on every channel, day by day
+      archive.md                every fact or page David replaced or forgot, word for word
 
 The folder is gitignored: the repository is public and this is personal.
 Set "brain_dir" in config.json to keep it somewhere else (an Obsidian vault).
@@ -49,6 +50,15 @@ class Brain:
             f.write(text)
         os.replace(tmp, path)     # never leave a note half-written
 
+    def _archive(self, source, text):
+        """Nothing David replaces is lost: the old words go to archive.md.
+           Call with _LOCK held."""
+        if not text.strip():
+            return
+        path = self.path("archive.md")
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(f"\n## {datetime.now():%Y-%m-%d %H:%M} — replaced in {source}\n\n{text.strip()}\n")
+
     # ---- memory: short facts ----
 
     def facts(self):
@@ -76,6 +86,7 @@ class Brain:
         with open(path, encoding="utf-8") as f:
             lines = f.read().split("\n")
         kept = [l for l in lines if keep_line(l)]
+        self._archive(f"memory/{category}", "\n".join(l for l in lines if not keep_line(l)))
         self._write(path, "\n".join(kept))
         return len(lines) - len(kept)
 
@@ -188,6 +199,7 @@ class Brain:
             if append and old:
                 body = f"{old}\n\n## {datetime.now():%Y-%m-%d %H:%M}\n\n{text.strip()}\n"
             else:
+                self._archive(os.path.relpath(path, self.root), old)
                 body = f"# {title}\n\n{text.strip()}\n"
             self._write(path, body)
             self._index()
