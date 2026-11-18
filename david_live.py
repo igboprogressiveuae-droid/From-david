@@ -6,7 +6,9 @@ One websocket to Google. Your microphone streams up, his voice streams back,
 and he can act on your machine mid-sentence. No local speech recognition, no
 local text to speech, no waiting for a round trip after you finish talking.
 
-    python david_live.py --ui
+    python david_live.py --ui           voice, with the interface
+    python david_live.py --no-voice     only Telegram and background jobs
+    python david_live.py --check        is everything set up?
 
 Needs:  pip install -r requirements.txt, and GEMINI_API_KEY in .env
 Everything that touches the operating system itself lives in macos.py.
@@ -970,6 +972,24 @@ def doctor():
     report(_HAVE_OAUTH_NOTION and oauth_notion.is_connected(), "Notion connected (optional)",
            "Connect it from the dashboard to journal by voice", False)
 
+    import engines
+    import telegram
+    brain = engines.current()
+    problem = engines.missing_key(brain)
+    report(problem is None, f"Thinking brain: {brain} ({engines.model_for(brain)})",
+           f"{problem} — or set \"brain\" back to gemini in config.json")
+    report(True, f"Second Brain notes: {BRAIN.root} ({len(BRAIN.facts())} facts)")
+    if telegram.enabled():
+        try:
+            name = telegram._call("getMe")["username"]
+            report(bool(telegram.owner_id()), f"Telegram bot @{name}",
+                   "Message the bot once — it replies with the TELEGRAM_OWNER_ID to put in .env", False)
+        except ConnectionError as e:
+            report(False, "Telegram bot", f"Telegram refused the token: {e}", False)
+    else:
+        report(False, "Telegram (optional)",
+               "Set TELEGRAM_BOT_TOKEN in .env to talk to David from your phone", False)
+
     if problems:
         print(f"\n{problems} thing{'s' if problems != 1 else ''} to fix before David can run.\n")
         return 1
@@ -980,6 +1000,23 @@ def doctor():
 def main():
     if "--check" in sys.argv:
         sys.exit(doctor())
+
+    import jobs
+    import telegram
+    telegram.start()
+    jobs.start()
+    if "--no-voice" in sys.argv:
+        # No microphone and no interface: just Telegram and jobs, e.g. while away.
+        tools.NOTIFY = telegram.send_owner
+        log("David is running without voice" +
+            (" — talk to him on Telegram" if telegram.enabled() else " — only jobs will run") +
+            ". Ctrl+C to stop.")
+        try:
+            threading.Event().wait()
+        except KeyboardInterrupt:
+            print("\nStopped.")
+        return
+
     live = Live()
     threading.Thread(target=live.play_forever, daemon=True).start()
     try:

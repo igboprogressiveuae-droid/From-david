@@ -1,6 +1,8 @@
 # David
 An AI voice assistant that runs your Mac. You talk, Gemini answers out loud, and it can open apps and sites, read your screen and click things, check Gmail, journal to Notion, check the news, and research what to buy.
 
+He also keeps a **Second Brain** of Markdown notes, can think with **Gemini, Claude or any OpenRouter model**, answers you on **Telegram**, and runs **background jobs** on a schedule. The design borrows from [Javis OS](https://github.com/blogminhquy/javis-os).
+
 Originally built for Windows by Ibans. This version runs on macOS.
 
 ## Set up
@@ -32,10 +34,31 @@ If one is missing, David says which — he won't pretend a click worked.
 
 **Use headphones.** There is no echo cancellation, so on speakers David can hear himself.
 
+## How he's built
+
+```
+           voice (Gemini Live)      Telegram         background jobs
+           david_live.py            telegram.py      jobs.py
+                 │                       │                │
+                 │  ask_brain            └──── engines.py ┘   the thinking brain:
+                 └──────────────────────────► gemini | claude | openrouter
+                 │                                 │
+                 └────────────► tools.py ◄─────────┘   every action, one place,
+                                   │                   one yes-first rule
+                                brain.py               Markdown notes in brain/
+```
+
+- **Voice** is always Gemini Live — the ears and the mouth. Say "think it over" or ask something hard and he hands it to the thinking brain with `ask_brain`.
+- **The thinking brain** is whatever `"brain"` says in `config.json`. Say "switch to Claude", or send `/brain claude` on Telegram. Claude needs `ANTHROPIC_API_KEY` and `pip install anthropic`; OpenRouter needs `OPENROUTER_API_KEY`.
+- **The Second Brain** is the `brain/` folder (not on GitHub): `memory/` for facts, `wiki/` for longer pages he writes, `conversations/` for every day's chat, and `archive.md` for anything replaced. Open it in Obsidian. Point `"brain_dir"` in `config.json` somewhere else to keep it in your own vault.
+- **Telegram:** make a bot with @BotFather, put `TELEGRAM_BOT_TOKEN` in `.env`, start David, message the bot, and it tells you the `TELEGRAM_OWNER_ID` to add. He answers no one else.
+- **Jobs:** "every morning at 7, give me the gold news" or "every 30 minutes, tell me if Bitcoin drops under 90,000". He asks before scheduling, speaks the result and sends it on Telegram, and stays quiet when there's nothing to say. A job can never delete, send or shut anything down.
+- `python david_live.py --no-voice` runs only Telegram and jobs — no microphone needed.
+
 ## Make it yours
 - `prompt.md` — how David behaves, and who he works for
 - `config.json` — your name, apps, sites, browsers and folders. No keys here: this file is on GitHub.
-- Say "remember that…" and he keeps it in `memory.json`
+- Say "remember that…" and he keeps it in `brain/memory/`
 
 ## Tests
 ```
