@@ -1233,9 +1233,12 @@ def _look(question, want_point=False):
 
 
 def _vision_order():
+    import engines
     order = [_look_gemini]
     if CFG.get("groq_key", "").strip() and not CFG.get("groq_key", "").startswith("PASTE"):
         order.append(_look_groq)
+    if engines.missing_key("claude") is None:      # signed in: Claude reads the screen when the rest are down
+        order.append(_look_claude)
     return order
 
 
@@ -1346,7 +1349,7 @@ def _look_gemini(question, img_b64, want_point):
     }
 
     try:
-        res = _gemini_post(body, CFG.get("vision_model"), timeout=60)
+        res = _gemini_post(body, CFG.get("vision_model"), timeout=30)   # busy Gemini can hang; let the backup try
     except requests.RequestException as e:
         return None, f"gemini unreachable: {e}"
 
@@ -1361,6 +1364,31 @@ def _look_gemini(question, img_b64, want_point):
         return "".join(p.get("text", "") for p in parts).strip(), None
     except (KeyError, IndexError, ValueError):
         return None, "gemini sent something unreadable"
+
+
+def _look_claude(question, img_b64, want_point):
+    """Claude, through the same sign-in as the Claude brain."""
+    import anthropic
+    import engines
+    try:
+        res = anthropic.Anthropic().messages.create(
+            model=engines.model_for("claude"), max_tokens=1000,
+            messages=[{"role": "user", "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": img_b64}},
+                {"type": "text", "text": question}]}])
+    except anthropic.RateLimitError:
+        return None, "claude quota reached|60"
+    except anthropic.APIStatusError as e:
+        return None, f"claude returned {e.status_code}"
+    except anthropic.APIError as e:
+        return None, f"claude unreachable: {e}"
+    if res.stop_reason == "refusal":
+        return None, "claude declined to read that screen"
+    text = "".join(b.text for b in res.content if b.type == "text").strip()
+    if want_point:   # Claude has no JSON mode; keep just the object
+        m = re.search(r"\{.*\}", text, re.S)
+        text = m.group(0) if m else text
+    return text, None
 
 
 def describe_screen(question="What is on this screen? Answer in two spoken sentences."):
