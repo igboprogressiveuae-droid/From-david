@@ -102,20 +102,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
 
     func webView(_ w: WKWebView, didFinish n: WKNavigation!) { loaded = true }
 
-    // Links to anywhere but David's own pages open in the normal browser.
+    // Only web links ever leave the app — never file:// or other apps' link schemes.
+    func isWeb(_ url: URL) -> Bool { ["http", "https"].contains(url.scheme?.lowercased() ?? "") }
+    func isDavid(_ url: URL) -> Bool {
+        url.scheme == "http" && ["127.0.0.1", "localhost"].contains(url.host ?? "") && url.port == 8765
+    }
+
+    // David's own pages stay in the window; other web links open in the normal browser;
+    // anything else is refused.
     func webView(_ w: WKWebView, decidePolicyFor action: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        if let url = action.request.url, url.host != "127.0.0.1", url.host != "localhost",
-           url.scheme == "http" || url.scheme == "https" {
-            NSWorkspace.shared.open(url)
-            return decisionHandler(.cancel)
-        }
-        decisionHandler(.allow)
+        guard let url = action.request.url else { return decisionHandler(.cancel) }
+        if isDavid(url) || url.absoluteString == "about:blank" { return decisionHandler(.allow) }
+        if isWeb(url) { NSWorkspace.shared.open(url) }
+        decisionHandler(.cancel)
     }
 
     func webView(_ w: WKWebView, createWebViewWith c: WKWebViewConfiguration,
                  for action: WKNavigationAction, windowFeatures f: WKWindowFeatures) -> WKWebView? {
-        if let url = action.request.url { NSWorkspace.shared.open(url) }   // target="_blank" links
+        if let url = action.request.url, isWeb(url) { NSWorkspace.shared.open(url) }   // target="_blank" links
         return nil
     }
 
