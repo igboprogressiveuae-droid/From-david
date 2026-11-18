@@ -54,6 +54,7 @@ If one is missing, David says which — he won't pretend a click worked.
 - **Telegram:** make a bot with @BotFather, put `TELEGRAM_BOT_TOKEN` in `.env`, start David, message the bot, and it tells you the `TELEGRAM_OWNER_ID` to add. He answers no one else.
 - **Jobs:** "every morning at 7, give me the gold news" or "every 30 minutes, tell me if Bitcoin drops under 90,000". He asks before scheduling, speaks the result and sends it on Telegram, and stays quiet when there's nothing to say. A job has every tool, screen and keyboard included, but anything that needs a yes — deleting, sending, shutting down — is refused, since nobody is there to say it.
 - `python david_live.py --no-voice` runs only Telegram and jobs — no microphone needed.
+- **The dashboard** (say "open the dashboard", or http://127.0.0.1:8765/dashboard.html while David runs) has a chat box, the brain switch, your jobs, your latest notes and Telegram's status, next to the Gmail and Notion settings.
 
 ## Make it yours
 - `prompt.md` — how David behaves, and who he works for
