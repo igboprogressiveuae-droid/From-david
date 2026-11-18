@@ -2,68 +2,100 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>David — Settings</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700&family=Montserrat:wght@600;700&display=swap" />
 <style>
+  /* Same Javis OS palette as the main screen (david_ui.html). */
   :root {
-    --bg: #03070C; --panel: rgba(8,20,34,.6); --edge: rgba(56,170,240,.28);
-    --cyan: #35B8F0; --ice: #CFEBFA; --dim: #4E7893; --green: #35E08A; --amber: #E8A33D;
-    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    color-scheme: dark;
+    --bg: #0e0e16; --bg2: #181822; --border: #36364c; --hairline: rgba(255,255,255,.08);
+    --surface-1: rgba(255,255,255,.025); --surface-2: rgba(255,255,255,.052); --surface-3: rgba(255,255,255,.085);
+    --accent: #ff7a3c; --accent-ink: #ffab81; --accent-wash: rgba(255,101,45,.08); --accent-line: rgba(255,130,67,.32);
+    --accent2: #8b5cf6; --accent2-ink: #d5b5ff; --accent2-wash: rgba(139,92,246,.1);
+    --text: #f3f3fb; --text2: #c0c0da; --text3: #9a9ab6;
+    --green: #34d36b; --red: #f4565a; --danger-ink: #ff8a8a;
+    --font: "Be Vietnam Pro", -apple-system, "Segoe UI", system-ui, sans-serif;
+    --brand: "Montserrat", var(--font); --mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--ice);
-         font-family: var(--sans); padding: 40px 24px; }
-  h1 { font-size: 22px; letter-spacing: .04em; margin: 0 0 6px; }
-  .sub { color: var(--dim); font-family: var(--mono); font-size: 12px; letter-spacing: .1em; margin-bottom: 32px; }
-  .grid { display: grid; gap: 16px; max-width: 640px; }
-  .card { background: var(--panel); border: 1px solid var(--edge); padding: 20px; position: relative; }
-  .card h2 { font-size: 15px; margin: 0 0 4px; display: flex; align-items: center; gap: 10px; }
-  .card p { color: var(--dim); font-size: 13px; margin: 0 0 16px; line-height: 1.5; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
-  .dot.on { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; line-height: 1.5; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .top { position: sticky; top: 0; z-index: 5; height: 52px; display: flex; align-items: center; gap: 12px; padding: 0 20px;
+         background: var(--bg2); border-bottom: 1px solid var(--border); }
+  .brand-mark { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; font-family: var(--brand);
+                font-weight: 700; font-size: 13px; color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent2)); }
+  .brand-text { font-family: var(--brand); font-weight: 700; font-size: 15px; letter-spacing: 3px; }
+  .crumb { color: var(--text3); font-size: 13px; }
+  .top a { margin-left: auto; height: 30px; display: inline-flex; align-items: center; padding: 0 12px; border-radius: 999px;
+           border: 1px solid var(--border); background: var(--surface-1); color: var(--text2); text-decoration: none; font-size: 12px; }
+  .top a:hover { background: var(--surface-3); color: var(--text); }
+  main { max-width: 1080px; margin: 0 auto; padding: 28px 20px 48px; }
+  h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; }
+  .sub { color: var(--text3); font-size: 13px; margin-bottom: 24px; }
+  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr)); align-items: start; }
+  .card { background: var(--surface-1); border: 1px solid var(--hairline); border-radius: 16px; padding: 20px; min-width: 0; }
+  .card.wide { grid-column: 1 / -1; }
+  .card h2 { font-size: 15px; font-weight: 600; margin: 0 0 4px; display: flex; align-items: center; gap: 10px; }
+  .card p { color: var(--text3); font-size: 13px; margin: 0 0 16px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text3); flex: none; opacity: .6; }
+  .dot.on { background: var(--green); opacity: 1; box-shadow: 0 0 8px rgba(52,211,107,.6); }
   .row { display: flex; gap: 10px; align-items: center; }
-  button { background: transparent; border: 1px solid var(--cyan); color: var(--cyan);
-           padding: 9px 18px; font-family: var(--mono); font-size: 11px; letter-spacing: .12em;
-           text-transform: uppercase; cursor: pointer; }
-  button:hover { background: rgba(53,184,240,.12); }
-  button.danger { border-color: rgba(220,90,70,.6); color: #ff9a85; }
-  button:disabled { opacity: .35; cursor: default; }
-  .status { font-family: var(--mono); font-size: 11px; color: var(--dim); margin-left: auto; }
-  .soon { opacity: .45; }
-  .soon .row::after { content: "coming soon"; font-family: var(--mono); font-size: 10px;
-                       letter-spacing: .12em; color: var(--dim); margin-left: auto; text-transform: uppercase; }
-  input[type="text"], input[type="password"] {
-    background: rgba(255,255,255,.04); border: 1px solid var(--edge); color: var(--ice);
-    padding: 9px 10px; font-family: var(--mono); font-size: 12px; width: 100%; outline: none;
-  }
-  input[type="text"]:focus, input[type="password"]:focus { border-color: var(--cyan); }
-  input[type="text"]::placeholder, input[type="password"]::placeholder { color: var(--dim); }
-  .field { margin-bottom: 10px; }
-  .hint { font-family: var(--mono); font-size: 10px; color: var(--dim); margin-top: -6px; margin-bottom: 14px; }
-  .hint a { color: var(--cyan); }
-  .log { max-height: 280px; overflow-y: auto; margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px; }
-  .msg { font-size: 13px; line-height: 1.5; white-space: pre-wrap; padding: 8px 10px; border-left: 2px solid var(--edge); }
-  .msg.you { color: var(--dim); }
-  .msg.david { border-left-color: var(--cyan); }
-  .list { list-style: none; margin: 0 0 14px; padding: 0; font-size: 13px; }
-  .list li { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; border-bottom: 1px solid rgba(56,170,240,.1); }
-  .list li span { flex: 1; line-height: 1.5; }
-  .list li small { display: block; color: var(--dim); font-family: var(--mono); font-size: 10px; }
-  .list li button { padding: 4px 10px; }
   .wrap { flex-wrap: wrap; }
+  button { height: 36px; padding: 0 16px; border-radius: 10px; border: 1px solid rgba(255,255,255,.28); background: rgba(255,255,255,.07);
+           color: var(--text); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; flex: none; }
+  #brainButtons button { text-transform: capitalize; }
+  button:hover { background: rgba(255,255,255,.12); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { filter: brightness(1.08); }
+  button.picked { background: var(--accent2-wash); border-color: var(--accent2); color: var(--accent2-ink); }
+  button.danger { background: rgba(244,86,90,.12); border-color: rgba(244,86,90,.45); color: var(--danger-ink); }
+  button:disabled { opacity: .4; cursor: default; }
+  .status { font-size: 12px; color: var(--text3); margin-left: auto; overflow-wrap: anywhere; }
+  .soon { opacity: .55; }
+  .soon .row::after { content: "Coming soon"; font-size: 11px; color: var(--text3); margin-left: auto; padding: 3px 9px;
+                      border-radius: 999px; border: 1px solid var(--border); }
+  input[type="text"], input[type="password"] {
+    height: 38px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--border); background: rgba(20,20,30,.8);
+    color: var(--text); font: inherit; font-size: 13px; width: 100%; min-width: 0; outline: none;
+  }
+  input:focus { border-color: var(--accent-line); }
+  input::placeholder { color: var(--text3); }
+  .field { margin-bottom: 10px; }
+  .hint { font-size: 12px; color: var(--text3); margin: -2px 0 14px; }
+  .hint a { color: var(--accent-ink); }
+  .log { max-height: 320px; overflow-y: auto; margin-bottom: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .log:empty { display: none; }
+  .msg { max-width: 88%; font-size: 13.5px; white-space: pre-wrap; overflow-wrap: anywhere; padding: 9px 13px; border-radius: 14px; }
+  .msg.you { align-self: flex-end; background: var(--surface-3); border-bottom-right-radius: 4px; }
+  .msg.david { background: var(--accent-wash); border: 1px solid var(--accent-line); border-bottom-left-radius: 4px; }
+  .list { list-style: none; margin: 0 0 14px; padding: 0; font-size: 13px; }
+  .list li { display: flex; gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--hairline); color: var(--text2); }
+  .list li:last-child { border-bottom: 0; }
+  .list li span { flex: 1; min-width: 0; }
+  .list li small { display: block; color: var(--text3); font-size: 11.5px; }
+  .list li button { height: 30px; padding: 0 12px; }
+  @media (max-width: 600px) { .row.wrap > input { flex: 1 1 100% !important; } .crumb { display: none; } }
 </style>
 </head>
 <body>
-  <h1>David — Settings</h1>
-  <div class="sub">CHAT · BRAIN · JOBS · CONNECTED TOOLS</div>
+  <header class="top">
+    <span class="brand-mark">D</span><span class="brand-text">DAVID</span><span class="crumb">/ Settings &amp; connections</span>
+    <a href="/david_ui.html">Back to David</a>
+  </header>
+  <main>
+  <h1>Settings &amp; connections</h1>
+  <div class="sub">Chat, his thinking brain, background jobs, notes and the services he's connected to.</div>
 
   <div class="grid">
-    <div class="card">
+    <div class="card wide">
       <h2><span class="dot on"></span> Chat</h2>
       <p>Type to David's thinking brain. Same tools as voice; anything that needs a yes asks first — reply "yes" here.</p>
       <div class="log" id="chatLog"></div>
       <div class="row">
         <input id="chatText" type="text" placeholder="Ask David something…" />
-        <button id="chatSend">Send</button>
+        <button id="chatSend" class="primary">Send</button>
       </div>
     </div>
 
@@ -80,12 +112,12 @@
       <ul class="list" id="jobList"></ul>
       <div class="field"><input id="jobTask" type="text" placeholder="What to do — e.g. give me the gold and oil news" /></div>
       <div class="row wrap" style="margin-bottom:10px">
-        <input id="jobAt" type="text" placeholder="At a time — 7am" style="flex:1" />
+        <input id="jobAt" type="text" placeholder="Time — 7am" style="flex:1" />
         <input id="jobDays" type="text" placeholder="Days (blank = daily)" style="flex:2" />
-        <input id="jobEvery" type="text" placeholder="…or every N minutes" style="flex:1" />
+        <input id="jobEvery" type="text" placeholder="Or every N min" style="flex:1" />
       </div>
       <div class="row">
-        <button id="jobAdd">Add job</button>
+        <button id="jobAdd" class="primary">Add job</button>
         <span class="status" id="jobStatus"></span>
       </div>
     </div>
@@ -151,6 +183,7 @@
       <div class="row"><button disabled>Set up</button></div>
     </div>
   </div>
+  </main>
 
   <script>
     async function api(path, opts) {
@@ -160,10 +193,8 @@
 
     async function refreshMode() {
       const s = await api("/api/display/mode");
-      document.getElementById("modeFull").style.borderColor = s.mode === "full" ? "var(--green)" : "";
-      document.getElementById("modeFull").style.color = s.mode === "full" ? "var(--green)" : "";
-      document.getElementById("modeCompact").style.borderColor = s.mode === "compact" ? "var(--green)" : "";
-      document.getElementById("modeCompact").style.color = s.mode === "compact" ? "var(--green)" : "";
+      document.getElementById("modeFull").classList.toggle("picked", s.mode === "full");
+      document.getElementById("modeCompact").classList.toggle("picked", s.mode === "compact");
     }
 
     async function setMode(mode) {
@@ -185,7 +216,7 @@
       document.getElementById("gmailStatus").textContent = s.connected ? s.address : (s.ready ? "not connected" : "needs credentials.json");
       const btn = document.getElementById("gmailBtn");
       btn.textContent = s.connected ? "Disconnect" : "Connect";
-      btn.className = s.connected ? "danger" : "";
+      btn.className = s.connected ? "danger" : "primary";
       btn.disabled = !s.ready && !s.connected;
     }
 
@@ -212,7 +243,7 @@
       document.getElementById("notionForm").style.display = s.connected ? "none" : "block";
       const btn = document.getElementById("notionBtn");
       btn.textContent = s.connected ? "Disconnect" : "Connect";
-      btn.className = s.connected ? "danger" : "";
+      btn.className = s.connected ? "danger" : "primary";
     }
 
     document.getElementById("notionBtn").addEventListener("click", async () => {
@@ -267,6 +298,7 @@
       addMsg("you", text);
       const thinking = el("div", "msg david", "thinking…");
       document.getElementById("chatLog").append(thinking);
+      thinking.scrollIntoView({ block: "nearest" });
       try {
         const res = await post("/api/chat", { text });
         thinking.textContent = res.ok ? res.reply : (res.error || "failed");
@@ -283,7 +315,7 @@
       box.replaceChildren(...s.brains.map(b => {
         const btn = el("button", "", b.name);
         btn.title = b.problem || b.model;
-        if (b.name === s.current) { btn.style.borderColor = "var(--green)"; btn.style.color = "var(--green)"; }
+        if (b.name === s.current) btn.classList.add("picked");
         if (b.problem) btn.style.opacity = ".45";
         btn.addEventListener("click", async () => {
           const res = await post("/api/brain", { name: b.name });
