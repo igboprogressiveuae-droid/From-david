@@ -3371,6 +3371,28 @@ class Live:
                 await asyncio.gather(self.send_audio(ws), self.receive(ws), self.announce(ws))
 
 
+def _refusal_kind(text):
+    """How to treat a refusal from Google, since several arrive as the same
+       kind of websocket error and only some are worth giving up over.
+
+       'key'   — the key is wrong, and no amount of retrying fixes that
+       'model' — the live model in config.json does not exist
+       'stale' — the saved resumption handle points at a session Google has
+                 already dropped. It says "not found" like a bad model does,
+                 but the fix is to forget the handle and start a fresh
+                 session, not to stop.
+       'retry' — anything else: the network, or a passing refusal
+    """
+    t = (text or "").lower()
+    if "api key" in t:
+        return "key"
+    if "session not found" in t:
+        return "stale"
+    if "not found" in t or "1007" in t:
+        return "model"
+    return "retry"
+
+
 async def stay_connected(live):
     """Sessions have a time limit and connections drop. Keep coming back."""
     wait = 2
@@ -3388,15 +3410,22 @@ async def stay_connected(live):
             wait = min(30, wait * 2)
         except websockets.exceptions.WebSocketException as e:
             text = str(e)
-            if "api key" in text.lower():
+            kind = _refusal_kind(text)
+            if kind == "key":
                 print(f"\nGoogle refused the key: {text[:160]}")
                 print("Check GEMINI_API_KEY in .env.")
                 return
-            if "not found" in text.lower() or "1007" in text:
+            if kind == "model":
                 print(f"\nConnection refused: {e}")
                 print("Try a different live_model in config.json.")
                 return
-            log(f"connection dropped, back in {wait}s:", text[:100])
+            if kind == "stale":
+                # Carrying the dead handle into the next attempt would be
+                # refused exactly the same way, forever.
+                live.resume_handle = None
+                log(f"the saved session had already expired — starting a fresh one in {wait}s")
+            else:
+                log(f"connection dropped, back in {wait}s:", text[:100])
             await asyncio.sleep(wait)
             wait = min(30, wait * 2)
         except OSError as e:

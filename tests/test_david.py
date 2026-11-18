@@ -24,6 +24,29 @@ import macos  # noqa: E402
 d.CFG["spoken_acknowledgement"] = False     # a slow job must not say "On it." mid-test
 
 
+class RefusalKind(unittest.TestCase):
+    """The reconnect loop gave up for good on the message Google sends when a
+       saved session has expired, because it reads as "not found" — David went
+       on serving his interface with no connection behind it."""
+
+    def test_expired_session_starts_a_fresh_one(self):
+        said = ("received 1008 (policy violation) BidiGenerateContent session not found; "
+                "then sent 1008 (policy violation) BidiGenerateContent session not found")
+        self.assertEqual(d._refusal_kind(said), "stale")
+
+    def test_a_wrong_model_is_still_fatal(self):
+        self.assertEqual(d._refusal_kind("models/gemini-nope not found"), "model")
+        self.assertEqual(d._refusal_kind("received 1007 (invalid frame payload data)"), "model")
+
+    def test_a_bad_key_is_fatal(self):
+        self.assertEqual(d._refusal_kind("API key not valid. Please pass a valid API key."), "key")
+
+    def test_anything_else_is_retried(self):
+        self.assertEqual(d._refusal_kind("no close frame received or sent"), "retry")
+        self.assertEqual(d._refusal_kind(""), "retry")
+        self.assertEqual(d._refusal_kind(None), "retry")
+
+
 class Confirmation(unittest.TestCase):
     def test_yes_is_whole_words(self):
         for said in ("yes", "Yeah, go ahead", "go ahead now", "sure, do it"):
