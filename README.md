@@ -23,7 +23,7 @@ Originally built for Windows by Ibans. This version runs on macOS.
 ## David as a Mac app
 `app/build.sh` builds **David.app** into Applications (needs Xcode's command-line tools for `swiftc`). Open it like any app: it starts David and shows his screen in its own window. Closing the window keeps him listening; click the Dock icon to bring it back, and quit with ⌘Q. His output goes to `david.log`.
 
-Rebuilding the app gives it a new signature, so macOS may ask for its permissions again.
+The first build makes a "David Local Signing" certificate in your login keychain and signs the app with it, so its permissions survive rebuilds. At start-up David asks macOS for any permission he's missing, which puts him in the Settings lists ready to switch on.
 
 ## Permissions
 Turn these on for **David** (or, without the app, for the app you run him from: Terminal, iTerm or VS Code) in **System Settings → Privacy & Security**, then restart David:

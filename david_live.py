@@ -1099,6 +1099,7 @@ def doctor():
     except Exception as e:
         report(False, "Microphone", f"Could not open it: {e}")
 
+    macos.ask_for_permissions()
     where = "System Settings → Privacy & Security → {} → turn on the app you run David from, then restart it"
     report(macos.can_see_screen(), "Screen Recording (reading the screen)",
            where.format("Screen Recording"), False)
