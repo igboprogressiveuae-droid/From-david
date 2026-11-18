@@ -41,8 +41,21 @@ class Engines(unittest.TestCase):
         self.assertEqual(engines.json_schema(g),
                          {"type": "object", "properties": {"n": {"type": "number", "description": "type"}}})
 
-    def test_ask_brain_is_hidden_from_the_brain_itself(self):
-        self.assertNotIn("ask_brain", {d["name"] for d in engines._declarations()})
+    def test_a_brain_cannot_call_itself_or_switch_brains(self):
+        names = {d["name"] for d in engines._declarations()}
+        self.assertFalse({"ask_brain", "use_brain"} & names)
+        tools.CFG["brain"] = "gemini"
+        replies = [
+            Reply({"candidates": [{"content": {"role": "model", "parts": [
+                {"functionCall": {"name": "use_brain", "args": {"name": "claude"}}}]}}]}),
+            Reply({"candidates": [{"content": {"role": "model", "parts": [{"text": "ok"}]}}]}),
+        ]
+        tools._gemini_post = lambda body, model=None, timeout=90: replies.pop(0)
+        tools.ACTIONS["use_brain"] = lambda **kw: self.ran.append("use_brain") or "switched"
+        convo = engines.Conversation("a test")
+        convo.ask("switch")
+        self.assertEqual(self.ran, [])
+        self.assertIn("not available", convo.history[2]["parts"][0]["functionResponse"]["response"]["result"])
 
     def test_gemini_calls_a_tool_then_answers_keeping_its_parts_whole(self):
         tools.CFG["brain"] = "gemini"

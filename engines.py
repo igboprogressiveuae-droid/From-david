@@ -17,6 +17,7 @@ because the memory is the Markdown brain, not the model.
 import importlib.util
 import json
 import os
+import time
 
 import requests
 
@@ -27,7 +28,9 @@ PROVIDERS = ("gemini", "claude", "openrouter")
 DEFAULT_MODELS = {"claude": "claude-opus-5-5", "openrouter": "openrouter/auto"}
 MAX_ROUNDS = 10           # tool calls per question before giving up
 MAX_HISTORY = 60          # messages kept before a conversation starts fresh
-NOT_FOR_ENGINES = {"ask_brain"}   # a brain asking itself would loop
+# a brain asking itself would loop; and only he, by voice or a Telegram command, picks the brain —
+# never a model that might have just read a web page telling it to
+NOT_FOR_ENGINES = {"ask_brain", "use_brain"}
 
 # Claude models that can retry on another model when a safety check declines
 _FALLBACK_MODELS = ("claude-fable-5-2", "claude-fable-5-1", "claude-opus-5-5",
@@ -113,7 +116,9 @@ class Conversation:
                 reply, calls = turn(system, decls)
                 if not calls:
                     return reply.strip() or "Done."
-                add_results([(call_id, name, tools.run(name, args, self.gate))
+                allowed = {d["name"] for d in decls}
+                add_results([(call_id, name, tools.run(name, args, self.gate) if name in allowed
+                              else f"{name} is not available here")
                              for call_id, name, args in calls])
             return "I stopped there — that was taking too many steps. Ask again more specifically?"
         except Exception as e:
@@ -135,6 +140,9 @@ class Conversation:
                 "contents": self.history,
                 "tools": [{"functionDeclarations": decls}]}
         res = tools._gemini_post(body, model_for("gemini"), timeout=120)
+        if res.status_code == 503:          # "high demand" — usually gone in seconds
+            time.sleep(5)
+            res = tools._gemini_post(body, model_for("gemini"), timeout=120)
         if not res.ok:
             raise EngineError(f"Gemini returned {res.status_code}: {res.text[:200]}")
         try:
