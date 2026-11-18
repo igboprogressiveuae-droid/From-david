@@ -2543,7 +2543,7 @@ def declarations():
         {"name": "search_brain", "description": "Search every note in your Second Brain for words.",
          "parameters": {"type": "OBJECT", "properties": {"query": s("words to look for")}, "required": ["query"]}},
 
-        {"name": "open_dashboard", "description": "Open the settings dashboard where they can connect tools or change the display mode.",
+        {"name": "open_dashboard", "description": "Open David's dashboard: a chat box to type to him, the thinking-brain switch, their background jobs, their latest notes, Telegram status, and settings for Gmail, Notion and the display. Use when they ask to open or show the dashboard, the chat box, their jobs or their notes.",
          "parameters": {"type": "OBJECT", "properties": {}}},
         {"name": "connect_gmail", "description": "Sign in to Gmail properly, so email works without reading the screen. Use when they ask to connect, set up, or link their email.",
          "parameters": {"type": "OBJECT", "properties": {}}},
