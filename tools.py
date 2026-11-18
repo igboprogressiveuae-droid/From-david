@@ -1926,8 +1926,8 @@ def _open_sources(candidate, limit=4):
     seen, opened = set(), 0
     for c in chunks:
         uri = (c.get("web") or {}).get("uri")
-        if not uri or uri in seen:
-            continue
+        if not uri or uri in seen or not uri.startswith(("https://", "http://")):
+            continue          # only web pages — never a file:// or app link
         seen.add(uri)
         _open_web(uri)
         opened += 1
