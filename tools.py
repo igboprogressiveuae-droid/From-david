@@ -1659,6 +1659,28 @@ def notion_table(rows, title=""):
     return f"added a table to Notion — {summary}"
 
 
+def run_workflow(name, details=""):
+    """Trigger one of his n8n workflows through its webhook and say what came
+       back. Only workflows listed under "workflows" in config.json can run, so
+       the model cannot invent a webhook path; the secret header stops anything
+       else on the machine from firing them."""
+    flows = CFG.get("workflows", {})
+    key = (name or "").strip().lower()
+    if key not in flows:
+        return f"there is no workflow called {name} — the ones set up are: {', '.join(flows) or 'none'}"
+    secret = os.environ.get("N8N_WEBHOOK_SECRET", "").strip()
+    if not secret:
+        return "n8n is not set up — N8N_WEBHOOK_SECRET is missing from .env"
+    url = f"{CFG.get('n8n_url', 'http://127.0.0.1:5678').rstrip('/')}/webhook/{key}"
+    try:
+        res = requests.post(url, headers={"X-David-Secret": secret}, json={"details": details}, timeout=60)
+    except requests.RequestException:
+        return "n8n is not running — start it with start-n8n.command and try again"
+    if res.status_code != 200:
+        return f"the {key} workflow failed with error {res.status_code}"
+    return res.text.strip()[:2000] or f"ran the {key} workflow"
+
+
 def recent_downloads(count=5):
     root = expand("~/Downloads")
     files = [os.path.join(root, f) for f in os.listdir(root)] if os.path.isdir(root) else []
@@ -2323,6 +2345,7 @@ ACTIONS = {
     "scroll": scroll, "press_key": press_key,
     "copy_image_to_clipboard": copy_image_to_clipboard,
     "journal": journal, "notion_table": notion_table, "notion_status": notion_status,
+    "run_workflow": run_workflow,
 }
 
 # these put something new on screen, so it gets moved off the interface screen.
@@ -2359,7 +2382,7 @@ REPEATABLE = {
 }
 
 DESTRUCTIVE = {"add_job", "remove_job", "delete_file", "rename_file", "write_file", "lock", "copy_file", "forget",
-               "send_email", "send_open_gmail",
+               "send_email", "send_open_gmail", "run_workflow",
                "close_app", "shutdown", "restart", "sleep_pc", "empty_bin"}
 
 _YES_WORDS = ("yes", "yeah", "yep", "yup", "confirm", "go ahead", "do it",
@@ -2449,6 +2472,7 @@ def _describe_destructive(name, args):
                               (f"every {a['every_minutes']} minutes" if a.get("every_minutes")
                                else f"at {a.get('at', '')} {a.get('days') or 'every day'}") + " from now on"),
         "remove_job": lambda a: f"remove job {a.get('job_id', '')}",
+        "run_workflow": lambda a: f"run the {a.get('name', '')} workflow",
     }
     try:
         return phrasing.get(name, lambda a: name)(args)
@@ -2695,6 +2719,11 @@ def declarations():
          "parameters": {"type": "OBJECT", "properties": {"count": {"type": "NUMBER", "description": "how many, default 5"}}}},
         {"name": "recent_downloads", "description": "Name the most recently downloaded files.",
          "parameters": {"type": "OBJECT", "properties": {"count": {"type": "NUMBER", "description": "how many, default 5"}}}},
+        {"name": "run_workflow", "description": "Run one of their n8n automation workflows by name and read back what it returns. "
+                                                "Set up: " + (", ".join(f"{k} ({v})" for k, v in CFG.get("workflows", {}).items()) or "none yet") + ".",
+         "parameters": {"type": "OBJECT", "properties": {"name": s("the workflow name, exactly as listed"),
+                                                        "details": s("anything the workflow needs from what they said, or empty")},
+                        "required": ["name"]}},
         {"name": "notion_status", "description": "Check right now, for real, whether Notion is connected. Instant, no network call. Call this whenever journaling or a Notion table comes up in conversation, before doing or saying anything else about it — the connection state in your instructions is only a snapshot from when this conversation started and goes stale the moment they connect or disconnect it from the dashboard.",
          "parameters": {"type": "OBJECT", "properties": {}}},
         {"name": "journal", "description": "Write a journal entry to their connected Notion page. Use whenever they ask you to journal something, write it in their journal, or log a thought or reflection there. If Notion is not connected it tells you so — say that to them plainly and suggest they connect it from the dashboard.",
