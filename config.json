@@ -78,8 +78,8 @@
   },
   "claude_effort": "medium",
   "brain_dir": "",
-  "n8n_url": "http://127.0.0.1:5678",
   "workflows": {
-    "hello": "a test that says hello, the time, and repeats the details back"
+    "hello": "a test that says hello, the time, and repeats the details back",
+    "log": "adds a row to his Google Sheet log with the date, time and the details as he said them"
   }
 }

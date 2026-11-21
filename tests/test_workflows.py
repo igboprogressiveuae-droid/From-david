@@ -15,10 +15,11 @@ import tools  # noqa: E402
 class Workflows(unittest.TestCase):
     def setUp(self):
         self.calls = []
-        self.saved = (tools.requests.post, dict(tools.CFG), os.environ.get("N8N_WEBHOOK_SECRET"))
+        self.saved = (tools.requests.post, dict(tools.CFG),
+                      {k: os.environ.get(k) for k in ("N8N_WEBHOOK_SECRET", "DAVID_N8N_URL")})
         tools.CFG["workflows"] = {"hello": "says hello"}
-        tools.CFG["n8n_url"] = "http://127.0.0.1:5678"
         os.environ["N8N_WEBHOOK_SECRET"] = "s3cret"
+        os.environ["DAVID_N8N_URL"] = "http://127.0.0.1:5678/webhook/"
 
         class Res:
             status_code, text = 200, "hello Uche"
@@ -32,10 +33,11 @@ class Workflows(unittest.TestCase):
         tools.requests.post = self.saved[0]
         tools.CFG.clear()
         tools.CFG.update(self.saved[1])
-        if self.saved[2] is None:
-            os.environ.pop("N8N_WEBHOOK_SECRET", None)
-        else:
-            os.environ["N8N_WEBHOOK_SECRET"] = self.saved[2]
+        for k, v in self.saved[2].items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
     def test_runs_a_listed_workflow_with_the_secret(self):
         self.assertEqual(tools.run_workflow("Hello", "hi"), "hello Uche")
@@ -53,11 +55,22 @@ class Workflows(unittest.TestCase):
         self.assertIn("N8N_WEBHOOK_SECRET", tools.run_workflow("hello"))
         self.assertEqual(self.calls, [])
 
+    def test_missing_url_is_said(self):
+        os.environ.pop("DAVID_N8N_URL")
+        self.assertIn("DAVID_N8N_URL", tools.run_workflow("hello"))
+        self.assertEqual(self.calls, [])
+
     def test_n8n_down_is_said(self):
         def down(*a, **k):
             raise requests.ConnectionError()
         tools.requests.post = down
         self.assertIn("not running", tools.run_workflow("hello"))
+
+    def test_unpublished_workflow_is_said(self):
+        class NotFound:
+            status_code, text = 404, ""
+        tools.requests.post = lambda *a, **k: NotFound()
+        self.assertIn("not published", tools.run_workflow("hello"))
 
     def test_needs_a_yes_first(self):
         self.assertIn("run_workflow", tools.DESTRUCTIVE)

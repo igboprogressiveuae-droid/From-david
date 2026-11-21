@@ -1671,11 +1671,16 @@ def run_workflow(name, details=""):
     secret = os.environ.get("N8N_WEBHOOK_SECRET", "").strip()
     if not secret:
         return "n8n is not set up — N8N_WEBHOOK_SECRET is missing from .env"
-    url = f"{CFG.get('n8n_url', 'http://127.0.0.1:5678').rstrip('/')}/webhook/{key}"
+    base = os.environ.get("DAVID_N8N_URL", "").strip().rstrip("/")
+    if not base:
+        return "n8n is not set up — DAVID_N8N_URL is missing from .env"
+    url = f"{base}/{key}"
     try:
         res = requests.post(url, headers={"X-David-Secret": secret}, json={"details": details}, timeout=60)
     except requests.RequestException:
         return "n8n is not running — start it with start-n8n.command and try again"
+    if res.status_code == 404:
+        return f"the {key} workflow is not published in n8n yet — open it in n8n and press Publish"
     if res.status_code != 200:
         return f"the {key} workflow failed with error {res.status_code}"
     return res.text.strip()[:2000] or f"ran the {key} workflow"
