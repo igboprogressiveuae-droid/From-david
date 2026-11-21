@@ -1,7 +1,7 @@
 #!/bin/bash
 # Double-click to start n8n, the automation server David's run_workflow tool calls.
 # Runs through npx, so nothing is installed: the first start downloads n8n (a few
-# minutes), later starts reuse npm's cache. Editor: http://127.0.0.1:5678
+# minutes), later starts reuse npm's cache. Editor: http://localhost:5678
 # Node 24, not the Mac's own Node: n8n 2.x and its isolated-vm need Node 24 or newer.
 # n8n is pinned to the version that created ~/.n8n, so its database never migrates by surprise.
 
