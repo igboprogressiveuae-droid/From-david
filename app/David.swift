@@ -9,12 +9,28 @@ import WebKit
 
 let page = URL(string: "http://127.0.0.1:8765/david_ui.html")!
 
+// Shown while he starts up (about 30 seconds: internet, then his setup check).
+let startingHTML = """
+<!doctype html><html><head><meta charset="utf-8"><style>
+html,body{margin:0;height:100%;background:#0e0e16;color:#f3f3fb;font-family:-apple-system,sans-serif}
+body{display:grid;place-items:center;text-align:center}
+.orb{width:120px;height:120px;margin:0 auto 28px;border-radius:50%;
+ background:radial-gradient(circle at 36% 30%,#e9dcff 0,#8b5cf6 45%,#2a1a52 100%);
+ box-shadow:0 0 60px rgba(139,92,246,.45);animation:p 1.8s ease-in-out infinite}
+@keyframes p{50%{transform:scale(1.07);box-shadow:0 0 90px rgba(139,92,246,.65)}}
+h1{font-size:15px;font-weight:600;letter-spacing:4px;margin:0 0 10px}
+#s{font-size:13px;color:#9a9ab6;min-height:18px;max-width:520px;padding:0 16px}
+@media (prefers-reduced-motion:reduce){.orb{animation:none}}
+</style></head><body><div><div class="orb"></div><h1>STARTING DAVID</h1><div id="s"></div></div></body></html>
+"""
+
 final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate {
     var window: NSWindow!
     var web: WKWebView!
     var david: Process?
     var logURL: URL!
     var loaded = false
+    var status: Timer?
     var quitting = false
 
     func applicationDidFinishLaunching(_ note: Notification) {
@@ -37,7 +53,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         NSApp.activate(ignoringOtherApps: true)
 
         startDavid()
-        web.load(URLRequest(url: page))
+        web.loadHTMLString(startingHTML, baseURL: nil)   // didFinish then moves on to his page
+        status = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.showProgress() }
+    }
+
+    // The last thing he wrote to his log, under "Starting David".
+    func showProgress() {
+        guard !loaded, let url = logURL, let text = try? String(contentsOf: url, encoding: .utf8) else { return }
+        guard var line = text.split(separator: "\n").map({ $0.trimmingCharacters(in: .whitespaces) })
+                .last(where: { !$0.isEmpty }) else { return }
+        if line.hasPrefix("["), let end = line.firstIndex(of: "]") {   // drop the "[19:01:25] " time
+            line = line[line.index(after: end)...].trimmingCharacters(in: .whitespaces)
+        }
+        guard let json = try? JSONEncoder().encode(String(line.prefix(120))),
+              let quoted = String(data: json, encoding: .utf8) else { return }
+        web.evaluateJavaScript("var e=document.getElementById('s'); if (e) e.textContent = \(quoted)")
     }
 
     func startDavid() {
@@ -100,7 +130,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { w.load(URLRequest(url: page)) }
     }
 
-    func webView(_ w: WKWebView, didFinish n: WKNavigation!) { loaded = true }
+    func webView(_ w: WKWebView, didFinish n: WKNavigation!) {
+        if w.url.map(isDavid) == true {
+            loaded = true
+            status?.invalidate()
+        } else if !loaded {
+            w.load(URLRequest(url: page))   // the starting screen is up; now try for his page
+        }
+    }
 
     // Only web links ever leave the app — never file:// or other apps' link schemes.
     func isWeb(_ url: URL) -> Bool { ["http", "https"].contains(url.scheme?.lowercased() ?? "") }

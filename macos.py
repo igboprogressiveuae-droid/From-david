@@ -85,6 +85,27 @@ def can_see_screen():
     return bool(_AS.CGPreflightScreenCaptureAccess())
 
 
+def ask_for_permissions():
+    """Have macOS show its own "allow David to…" prompts for whatever is missing,
+       which also puts the app in the Settings list ready to switch on. macOS only
+       shows each prompt once; after that this does nothing."""
+    if not can_see_screen():
+        _AS.CGRequestScreenCaptureAccess()
+    if not can_control():
+        cf = ctypes.c_void_p
+        _CF.CFDictionaryCreate.restype = cf
+        _CF.CFDictionaryCreate.argtypes = [cf, ctypes.POINTER(cf), ctypes.POINTER(cf), ctypes.c_long, cf, cf]
+        _AS.AXIsProcessTrustedWithOptions.argtypes = [cf]
+        keys = (cf * 1)(cf.in_dll(_AS, "kAXTrustedCheckOptionPrompt").value)
+        vals = (cf * 1)(cf.in_dll(_CF, "kCFBooleanTrue").value)
+        opts = _CF.CFDictionaryCreate(None, keys, vals, 1,
+                                      ctypes.addressof(ctypes.c_char.in_dll(_CF, "kCFTypeDictionaryKeyCallBacks")),
+                                      ctypes.addressof(ctypes.c_char.in_dll(_CF, "kCFTypeDictionaryValueCallBacks")))
+        _AS.AXIsProcessTrustedWithOptions(opts)
+        _CF.CFRelease.argtypes = [cf]
+        _CF.CFRelease(opts)
+
+
 # ---- running things ----
 
 def _run(args, timeout=10, text_in=None):

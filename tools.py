@@ -1233,9 +1233,12 @@ def _look(question, want_point=False):
 
 
 def _vision_order():
+    import engines
     order = [_look_gemini]
     if CFG.get("groq_key", "").strip() and not CFG.get("groq_key", "").startswith("PASTE"):
         order.append(_look_groq)
+    if engines.missing_key("claude") is None:      # signed in: Claude reads the screen when the rest are down
+        order.append(_look_claude)
     return order
 
 
@@ -1346,7 +1349,7 @@ def _look_gemini(question, img_b64, want_point):
     }
 
     try:
-        res = _gemini_post(body, CFG.get("vision_model"), timeout=60)
+        res = _gemini_post(body, CFG.get("vision_model"), timeout=30)   # busy Gemini can hang; let the backup try
     except requests.RequestException as e:
         return None, f"gemini unreachable: {e}"
 
@@ -1361,6 +1364,31 @@ def _look_gemini(question, img_b64, want_point):
         return "".join(p.get("text", "") for p in parts).strip(), None
     except (KeyError, IndexError, ValueError):
         return None, "gemini sent something unreadable"
+
+
+def _look_claude(question, img_b64, want_point):
+    """Claude, through the same sign-in as the Claude brain."""
+    import anthropic
+    import engines
+    try:
+        res = anthropic.Anthropic().messages.create(
+            model=engines.model_for("claude"), max_tokens=1000,
+            messages=[{"role": "user", "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": img_b64}},
+                {"type": "text", "text": question}]}])
+    except anthropic.RateLimitError:
+        return None, "claude quota reached|60"
+    except anthropic.APIStatusError as e:
+        return None, f"claude returned {e.status_code}"
+    except anthropic.APIError as e:
+        return None, f"claude unreachable: {e}"
+    if res.stop_reason == "refusal":
+        return None, "claude declined to read that screen"
+    text = "".join(b.text for b in res.content if b.type == "text").strip()
+    if want_point:   # Claude has no JSON mode; keep just the object
+        m = re.search(r"\{.*\}", text, re.S)
+        text = m.group(0) if m else text
+    return text, None
 
 
 def describe_screen(question="What is on this screen? Answer in two spoken sentences."):
@@ -1629,6 +1657,33 @@ def notion_table(rows, title=""):
     except Exception as e:
         return f"that table did not save to Notion: {e}"
     return f"added a table to Notion — {summary}"
+
+
+def run_workflow(name, details=""):
+    """Trigger one of his n8n workflows through its webhook and say what came
+       back. Only workflows listed under "workflows" in config.json can run, so
+       the model cannot invent a webhook path; the secret header stops anything
+       else on the machine from firing them."""
+    flows = CFG.get("workflows", {})
+    key = (name or "").strip().lower()
+    if key not in flows:
+        return f"there is no workflow called {name} — the ones set up are: {', '.join(flows) or 'none'}"
+    secret = os.environ.get("N8N_WEBHOOK_SECRET", "").strip()
+    if not secret:
+        return "n8n is not set up — N8N_WEBHOOK_SECRET is missing from .env"
+    base = os.environ.get("DAVID_N8N_URL", "").strip().rstrip("/")
+    if not base:
+        return "n8n is not set up — DAVID_N8N_URL is missing from .env"
+    url = f"{base}/{key}"
+    try:
+        res = requests.post(url, headers={"X-David-Secret": secret}, json={"details": details}, timeout=60)
+    except requests.RequestException:
+        return "n8n is not running — start it with start-n8n.command and try again"
+    if res.status_code == 404:
+        return f"the {key} workflow is not published in n8n yet — open it in n8n and press Publish"
+    if res.status_code != 200:
+        return f"the {key} workflow failed with error {res.status_code}"
+    return res.text.strip()[:2000] or f"ran the {key} workflow"
 
 
 def recent_downloads(count=5):
@@ -2295,6 +2350,7 @@ ACTIONS = {
     "scroll": scroll, "press_key": press_key,
     "copy_image_to_clipboard": copy_image_to_clipboard,
     "journal": journal, "notion_table": notion_table, "notion_status": notion_status,
+    "run_workflow": run_workflow,
 }
 
 # these put something new on screen, so it gets moved off the interface screen.
@@ -2331,7 +2387,7 @@ REPEATABLE = {
 }
 
 DESTRUCTIVE = {"add_job", "remove_job", "delete_file", "rename_file", "write_file", "lock", "copy_file", "forget",
-               "send_email", "send_open_gmail",
+               "send_email", "send_open_gmail", "run_workflow",
                "close_app", "shutdown", "restart", "sleep_pc", "empty_bin"}
 
 _YES_WORDS = ("yes", "yeah", "yep", "yup", "confirm", "go ahead", "do it",
@@ -2421,6 +2477,7 @@ def _describe_destructive(name, args):
                               (f"every {a['every_minutes']} minutes" if a.get("every_minutes")
                                else f"at {a.get('at', '')} {a.get('days') or 'every day'}") + " from now on"),
         "remove_job": lambda a: f"remove job {a.get('job_id', '')}",
+        "run_workflow": lambda a: f"run the {a.get('name', '')} workflow",
     }
     try:
         return phrasing.get(name, lambda a: name)(args)
@@ -2667,6 +2724,11 @@ def declarations():
          "parameters": {"type": "OBJECT", "properties": {"count": {"type": "NUMBER", "description": "how many, default 5"}}}},
         {"name": "recent_downloads", "description": "Name the most recently downloaded files.",
          "parameters": {"type": "OBJECT", "properties": {"count": {"type": "NUMBER", "description": "how many, default 5"}}}},
+        {"name": "run_workflow", "description": "Run one of their n8n automation workflows by name and read back what it returns. "
+                                                "Set up: " + (", ".join(f"{k} ({v})" for k, v in CFG.get("workflows", {}).items()) or "none yet") + ".",
+         "parameters": {"type": "OBJECT", "properties": {"name": s("the workflow name, exactly as listed"),
+                                                        "details": s("anything the workflow needs from what they said, or empty")},
+                        "required": ["name"]}},
         {"name": "notion_status", "description": "Check right now, for real, whether Notion is connected. Instant, no network call. Call this whenever journaling or a Notion table comes up in conversation, before doing or saying anything else about it — the connection state in your instructions is only a snapshot from when this conversation started and goes stale the moment they connect or disconnect it from the dashboard.",
          "parameters": {"type": "OBJECT", "properties": {}}},
         {"name": "journal", "description": "Write a journal entry to their connected Notion page. Use whenever they ask you to journal something, write it in their journal, or log a thought or reflection there. If Notion is not connected it tells you so — say that to them plainly and suggest they connect it from the dashboard.",

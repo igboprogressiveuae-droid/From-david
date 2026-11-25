@@ -1,6 +1,7 @@
 #!/bin/bash
 # Builds David.app into /Applications. Run again after changing app/David.swift.
-# Rebuilding gives the app a new signature, so macOS may ask for its permissions again.
+# Signed with a certificate made on this Mac (see below), so macOS keeps David's
+# permissions across rebuilds.
 set -euo pipefail
 cd "$(dirname "$0")"
 REPO="$(cd .. && pwd)"
@@ -35,6 +36,19 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-# Signed for this Mac only, so its permissions stick between launches.
-codesign --force --sign - "$APP"
+# macOS ties permissions to the app's signature. Ad-hoc signing changes it on every
+# build, silently voiding Screen Recording and the rest; a certificate keeps it the same.
+# The certificate and its key exist only in this Mac's login keychain.
+CERT="David Local Signing"
+if ! security find-certificate -c "$CERT" >/dev/null 2>&1; then
+  echo "Making the '$CERT' certificate (once)…"
+  TMP="$(mktemp -d)"
+  /usr/bin/openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -subj "/CN=$CERT" \
+    -keyout "$TMP/key.pem" -out "$TMP/cert.pem" \
+    -addext "keyUsage=critical,digitalSignature" -addext "extendedKeyUsage=critical,codeSigning" 2>/dev/null
+  /usr/bin/openssl pkcs12 -export -inkey "$TMP/key.pem" -in "$TMP/cert.pem" -out "$TMP/d.p12" -passout pass:david
+  security import "$TMP/d.p12" -k ~/Library/Keychains/login.keychain-db -P david -T /usr/bin/codesign >/dev/null
+  rm -rf "$TMP"
+fi
+codesign --force --sign "$CERT" "$APP"
 echo "Built $APP"
