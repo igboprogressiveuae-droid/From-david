@@ -70,7 +70,7 @@
   "wake_phrase": "wake up david",
   "sleep_after_minutes": 5,
   "wake_debug": false,
-  "brain": "gemini",
+  "brain": "claude",
   "brain_models": {
     "gemini": "",
     "claude": "claude-opus-5-5",
